@@ -18,7 +18,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # 平文（実運用ではハッシュ化すること）
+    password = Column(String, nullable=False)  # 平文保存（実際はハッシュ化が必要）
     department = Column(String)
 
 class Event(Base):
@@ -82,7 +82,6 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
-    # 対象日の範囲を算出（開始日～終了日のイベントを取得）
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     events = db.query(Event).filter(Event.owner_id == owner_id, Event.start_time >= start_of_day, Event.start_time <= end_of_day).all()
@@ -194,12 +193,11 @@ def logout_ui():
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
-
+    
     # --- サイドバー: イベント入力フォーム ---
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
-        # 開始日と終了日を個別に入力
         event_start_date = st.date_input("開始日", value=date.today(), key="start_date")
         event_end_date = st.date_input("終了日", value=date.today(), key="end_date")
         all_day = st.checkbox("終日", value=False)
@@ -224,6 +222,8 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+                st.experimental_rerun()
+    
     # --- サイドバー: Todo 管理 ---
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
@@ -231,6 +231,7 @@ def main_page():
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -270,8 +271,9 @@ def main_page():
         #calendar { max-width: 900px; margin: 20px auto; }
         .fc-day-sat { background-color: #ABE1FA !important; }
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
-        /* イベント表示の調整：文字サイズやオーバーフローを抑制 */
-        .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* イベント表示の調整：文字サイズやオーバーフロー対策 */
+        .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
+        .fc-event-time { font-size: 0.7rem; }
       </style>
     </head>
     <body>
@@ -324,7 +326,7 @@ def main_page():
               var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
               var endTime = FullCalendar.formatDate(arg.event.end, {hour: '2-digit', minute: '2-digit'});
               var timeEl = document.createElement('div');
-              timeEl.style.fontSize = '0.9rem';
+              timeEl.style.fontSize = '0.7rem';
               timeEl.innerText = startTime + '～' + endTime;
               var titleEl = document.createElement('div');
               titleEl.style.fontSize = '0.8rem';
