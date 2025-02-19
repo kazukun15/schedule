@@ -18,7 +18,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # 注意: 平文保存は実際は推奨されません
+    password = Column(String, nullable=False)  # 平文（実運用ではハッシュ化すること）
     department = Column(String)
 
 class Event(Base):
@@ -50,12 +50,11 @@ def get_db():
 # ---------------------------
 # セッション初期化（Streamlit）
 # ---------------------------
-# 必要なキーを必ず初期化する
 st.session_state.setdefault("current_user", None)
 st.session_state.setdefault("page", "login")  # login, register, main
 
 # ---------------------------
-# ヘルパー関数（データベース操作）
+# ヘルパー関数（DB操作）
 # ---------------------------
 def get_user(username):
     db = SessionLocal()
@@ -83,9 +82,10 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
+    # 対象日の範囲を算出（開始日～終了日のイベントを取得）
     start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
-    events = db.query(Event).filter(Event.owner_id == owner_id, Event.start_time >= start_of_day, Event.start_time < end_of_day).all()
+    end_of_day = datetime.combine(target_date, datetime.max.time())
+    events = db.query(Event).filter(Event.owner_id == owner_id, Event.start_time >= start_of_day, Event.start_time <= end_of_day).all()
     db.close()
     return events
 
@@ -187,23 +187,25 @@ def register_page():
     if st.button("ログインページへ"):
         st.session_state.page = "login"
 
-def logout():
+def logout_ui():
     st.session_state.current_user = None
     st.session_state.page = "login"
 
 def main_page():
     st.title("海光園スケジュールシステム")
-    st.sidebar.button("ログアウト", on_click=logout)
+    st.sidebar.button("ログアウト", on_click=logout_ui)
 
     # --- サイドバー: イベント入力フォーム ---
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
-        event_date = st.date_input("日付", value=date.today())
+        # 開始日と終了日を個別に入力
+        event_start_date = st.date_input("開始日", value=date.today(), key="start_date")
+        event_end_date = st.date_input("終了日", value=date.today(), key="end_date")
         all_day = st.checkbox("終日", value=False)
         if not all_day:
             event_start_time = st.time_input("開始時刻", value=datetime.now().time().replace(second=0, microsecond=0))
-            start_dt = datetime.combine(event_date, event_start_time)
+            start_dt = datetime.combine(event_start_date, event_start_time)
             default_end = (start_dt + timedelta(hours=1)).time()
             event_end_time = st.time_input("終了時刻", value=default_end)
         else:
@@ -216,8 +218,8 @@ def main_page():
             else:
                 new_event = add_event_to_db(
                     event_title,
-                    datetime.combine(event_date, event_start_time),
-                    datetime.combine(event_date, event_end_time),
+                    datetime.combine(event_start_date, event_start_time),
+                    datetime.combine(event_end_date, event_end_time),
                     event_description,
                     st.session_state.current_user.id
                 )
@@ -239,9 +241,9 @@ def main_page():
                 # 同じタイトルの予定（本日のもの）を削除
                 db = SessionLocal()
                 db.query(Event).filter(
-                    Event.owner_id==st.session_state.current_user.id,
-                    func.date(Event.start_time)==date.today(),
-                    Event.title==todo.title
+                    Event.owner_id == st.session_state.current_user.id,
+                    func.date(Event.start_time) == date.today(),
+                    Event.title == todo.title
                 ).delete()
                 db.commit()
                 db.close()
@@ -249,7 +251,7 @@ def main_page():
                 st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
-
+    
     # --- メインエリア: カレンダー表示 ---
     st.markdown("### カレンダー")
     target_date = date.today()
@@ -268,6 +270,8 @@ def main_page():
         #calendar { max-width: 900px; margin: 20px auto; }
         .fc-day-sat { background-color: #ABE1FA !important; }
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
+        /* イベント表示の調整：文字サイズやオーバーフローを抑制 */
+        .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       </style>
     </head>
     <body>
@@ -339,7 +343,6 @@ def main_page():
     """ % (json.dumps(holidays), events_json)
     components.html(html_calendar, height=700)
 
-# --- ページ制御 ---
 if st.session_state.current_user is None:
     if st.session_state.page == "register":
         register_page()
