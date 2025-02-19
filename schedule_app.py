@@ -90,9 +90,9 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
-    # 対象日の範囲にまたがるイベントを取得
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
+    # 対象日をまたぐイベントも含め、かつ削除されていないものを取得
     events = db.query(Event).filter(
         Event.owner_id == owner_id,
         Event.deleted == False,
@@ -213,7 +213,8 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
-    # 手動更新ボタン
+    
+    # 手動更新ボタン（必要に応じて）
     if st.button("更新"):
         try:
             st.experimental_rerun()
@@ -343,9 +344,8 @@ def main_page():
               }
             },
             eventClick: function(info) {
-              if(confirm("この予定を削除しますか？")){
-                info.event.remove();
-              }
+              // 削除は DB で実施するので、こちらでは削除ボタンは表示せずアラートのみ表示
+              alert("イベントの削除は Todo 完了時に反映されます。");
             },
             eventContent: function(arg) {
               var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
