@@ -271,7 +271,7 @@ def main_page():
         .fc-day-sat { background-color: #ABE1FA !important; }
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
         .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; color: #555555; }
-        .fc-event-time { font-size: 0.7rem; }
+        .fc-event-time { font-size: 0.7rem; color: #555555; }
         .fc-event-multiday { background-color: #D0EFFF !important; }
       </style>
     </head>
@@ -326,6 +326,7 @@ def main_page():
               var endTime = FullCalendar.formatDate(arg.event.end, {hour: '2-digit', minute: '2-digit'});
               var timeEl = document.createElement('div');
               timeEl.style.fontSize = '0.7rem';
+              timeEl.style.color = '#555555';
               timeEl.innerText = startTime + '～' + endTime;
               var titleEl = document.createElement('div');
               titleEl.style.fontSize = '0.8rem';
