@@ -80,8 +80,7 @@ def create_user(username, password, department):
 
 def add_event_to_db(title, start_time, end_time, description, owner_id):
     db = SessionLocal()
-    ev = Event(title=title, start_time=start_time, end_time=end_time,
-               description=description, owner_id=owner_id, deleted=False)
+    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id, deleted=False)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -90,9 +89,9 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
+    # 対象日をまたぐイベントも含める条件
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
-    # 対象日をまたぐイベントも含め、かつ削除されていないものを取得
     events = db.query(Event).filter(
         Event.owner_id == owner_id,
         Event.deleted == False,
@@ -213,8 +212,7 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
-    
-    # 手動更新ボタン（必要に応じて）
+    # 手動更新ボタン
     if st.button("更新"):
         try:
             st.experimental_rerun()
@@ -251,6 +249,18 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+    
+    # サイドバー: 今日の予定一覧（削除ボタン付き）
+    st.sidebar.markdown("### 今日の予定一覧")
+    events_today = get_events_from_db(st.session_state.current_user.id, date.today())
+    if events_today:
+        for ev in events_today:
+            st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
+            if st.sidebar.button(f"削除 (ID:{ev.id})", key=f"del_{ev.id}"):
+                delete_event_from_db(ev.id, st.session_state.current_user.id)
+                st.success("予定を削除しました。")
+    else:
+        st.sidebar.info("本日の予定はありません。")
     
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
@@ -344,8 +354,8 @@ def main_page():
               }
             },
             eventClick: function(info) {
-              // 削除は DB で実施するので、こちらでは削除ボタンは表示せずアラートのみ表示
-              alert("イベントの削除は Todo 完了時に反映されます。");
+              // イベントの削除は、サイドバーの「今日の予定一覧」から実施してください
+              alert("イベントの削除はサイドバーの『今日の予定一覧』から実施してください。");
             },
             eventContent: function(arg) {
               var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
