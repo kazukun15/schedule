@@ -80,7 +80,8 @@ def create_user(username, password, department):
 
 def add_event_to_db(title, start_time, end_time, description, owner_id):
     db = SessionLocal()
-    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id, deleted=False)
+    ev = Event(title=title, start_time=start_time, end_time=end_time,
+               description=description, owner_id=owner_id, deleted=False)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -212,6 +213,7 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
+    
     # 手動更新ボタン
     if st.button("更新"):
         try:
@@ -249,16 +251,18 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+                st.experimental_rerun()
     
-    # サイドバー: 今日の予定一覧（削除ボタン付き）
-    st.sidebar.markdown("### 今日の予定一覧")
+    # サイドバー: 今日の予定一覧（完了ボタン付き）
+    st.sidebar.markdown("### 本日の予定一覧")
     events_today = get_events_from_db(st.session_state.current_user.id, date.today())
     if events_today:
         for ev in events_today:
             st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
-            if st.sidebar.button(f"削除 (ID:{ev.id})", key=f"del_{ev.id}"):
+            if st.sidebar.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
                 delete_event_from_db(ev.id, st.session_state.current_user.id)
-                st.success("予定を削除しました。")
+                st.success("予定を完了しました。")
+                st.experimental_rerun()
     else:
         st.sidebar.info("本日の予定はありません。")
     
@@ -269,6 +273,7 @@ def main_page():
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -285,6 +290,7 @@ def main_page():
                 db.commit()
                 db.close()
                 st.success("Todo 完了")
+                st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
     
@@ -354,8 +360,8 @@ def main_page():
               }
             },
             eventClick: function(info) {
-              // イベントの削除は、サイドバーの「今日の予定一覧」から実施してください
-              alert("イベントの削除はサイドバーの『今日の予定一覧』から実施してください。");
+              // 今回はサイドバーの「本日の予定一覧」から削除してください
+              alert("この予定を削除するには、サイドバーの『本日の予定一覧』から完了ボタンを押してください。");
             },
             eventContent: function(arg) {
               var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
