@@ -213,7 +213,7 @@ def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # サイドバー: イベント入力フォーム（予定入力をサイドバーに配置）
+    # サイドバー: イベント入力フォーム
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -241,8 +241,7 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
-                # st.experimental_rerun() は削除
-
+    
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
@@ -250,7 +249,6 @@ def main_page():
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
-            # st.experimental_rerun() は削除
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
