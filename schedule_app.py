@@ -8,17 +8,17 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # ---------------------------
-# データベース設定
+# データベース設定 (SQLite)
 # ---------------------------
 engine = create_engine("sqlite:///data.db", connect_args={"check_same_thread": False})
 Base = declarative_base()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine)
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)
+    password = Column(String, nullable=False)  # 注意: 平文保存は実際は推奨されません
     department = Column(String)
 
 class Event(Base):
@@ -48,7 +48,14 @@ def get_db():
         db.close()
 
 # ---------------------------
-# ヘルパー関数（DB操作）
+# セッション初期化（Streamlit）
+# ---------------------------
+# 必要なキーを必ず初期化する
+st.session_state.setdefault("current_user", None)
+st.session_state.setdefault("page", "login")  # login, register, main
+
+# ---------------------------
+# ヘルパー関数（データベース操作）
 # ---------------------------
 def get_user(username):
     db = SessionLocal()
@@ -74,17 +81,17 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
     db.close()
     return ev
 
-def get_events_from_db(user_id, target_date):
+def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
-    events = db.query(Event).filter(Event.owner_id == user_id, Event.start_time >= start_of_day, Event.start_time < end_of_day).all()
+    events = db.query(Event).filter(Event.owner_id == owner_id, Event.start_time >= start_of_day, Event.start_time < end_of_day).all()
     db.close()
     return events
 
-def delete_event_from_db(event_id, user_id):
+def delete_event_from_db(event_id, owner_id):
     db = SessionLocal()
-    ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == user_id).first()
+    ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
     if ev:
         db.delete(ev)
         db.commit()
@@ -102,9 +109,9 @@ def add_todo_to_db(title, owner_id):
     db.close()
     return t
 
-def get_todos_from_db(user_id, target_date):
+def get_todos_from_db(owner_id, target_date):
     db = SessionLocal()
-    todos = db.query(Todo).filter(Todo.owner_id == user_id, Todo.date == target_date, Todo.completed == False).all()
+    todos = db.query(Todo).filter(Todo.owner_id == owner_id, Todo.date == target_date, Todo.completed == False).all()
     db.close()
     return todos
 
@@ -119,7 +126,6 @@ def complete_todo_in_db(todo_id, owner_id):
     db.close()
     return False
 
-# jpholiday を使って祝日を取得
 def get_holidays_for_month(target_date):
     first_day = target_date.replace(day=1)
     if target_date.month == 12:
@@ -135,8 +141,8 @@ def get_holidays_for_month(target_date):
         d += timedelta(days=1)
     return holidays
 
-def serialize_events(user_id, target_date):
-    events = get_events_from_db(user_id, target_date)
+def serialize_events(owner_id, target_date):
+    events = get_events_from_db(owner_id, target_date)
     evs = []
     for ev in events:
         evs.append({
@@ -151,10 +157,6 @@ def serialize_events(user_id, target_date):
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-if "page" not in st.session_state:
-    st.session_state.page = "login"
-
-# ユーザー認証
 def login_page():
     st.title("ログイン")
     username = st.text_input("ユーザー名")
@@ -192,8 +194,8 @@ def logout():
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout)
-    
-    # サイドバー：イベント入力フォーム
+
+    # --- サイドバー: イベント入力フォーム ---
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -212,7 +214,7 @@ def main_page():
             if not event_title:
                 st.error("予定のタイトルは必須です。")
             else:
-                new_ev = add_event_to_db(
+                new_event = add_event_to_db(
                     event_title,
                     datetime.combine(event_date, event_start_time),
                     datetime.combine(event_date, event_end_time),
@@ -220,7 +222,7 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
-    # サイドバー： Todo 管理
+    # --- サイドバー: Todo 管理 ---
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
@@ -247,8 +249,8 @@ def main_page():
                 st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
-    
-    # メインエリア：カレンダー表示
+
+    # --- メインエリア: カレンダー表示 ---
     st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
@@ -288,10 +290,10 @@ def main_page():
             events: %s,
             dayCellDidMount: function(info) {
               var dStr = formatLocalDate(info.date);
-              if(info.date.getDay() === 6) {
+              if(info.date.getDay() === 6){
                 info.el.style.backgroundColor = "#ABE1FA";
               }
-              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {
+              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1){
                 info.el.style.backgroundColor = "#F9C1CF";
               }
             },
@@ -337,6 +339,7 @@ def main_page():
     """ % (json.dumps(holidays), events_json)
     components.html(html_calendar, height=700)
 
+# --- ページ制御 ---
 if st.session_state.current_user is None:
     if st.session_state.page == "register":
         register_page()
