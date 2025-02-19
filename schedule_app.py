@@ -1,5 +1,4 @@
 import streamlit as st
-st.set_page_config(layout="wide")
 import streamlit.components.v1 as components
 import json
 import jpholiday
@@ -198,7 +197,7 @@ def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # サイドバー：イベント入力フォーム（入力画面はサイドバーに配置）
+    # サイドバー: イベント入力フォーム（予定入力をサイドバーに配置）
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -226,16 +225,15 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
-                st.experimental_rerun()
-    
-    # サイドバー： Todo 管理
+                # 再描画は自動更新に任せる
+
+    # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
-            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -253,11 +251,10 @@ def main_page():
                 db.commit()
                 db.close()
                 st.success("Todo 完了")
-                st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
     
-    # メインエリア：カレンダー表示
+    # メインエリア: カレンダー表示
     st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
