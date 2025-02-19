@@ -197,7 +197,7 @@ def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # サイドバー: イベント入力フォーム（予定入力をサイドバーに配置）
+    # サイドバー: イベント入力フォーム
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -225,6 +225,7 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+    
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
@@ -269,9 +270,8 @@ def main_page():
         #calendar { max-width: 900px; margin: 20px auto; }
         .fc-day-sat { background-color: #ABE1FA !important; }
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
-        .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
+        .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; color: #555555; }
         .fc-event-time { font-size: 0.7rem; }
-        /* 複数日に渡る予定の場合は、薄い青色の帯 (#D0EFFF) を適用 */
         .fc-event-multiday { background-color: #D0EFFF !important; }
       </style>
     </head>
@@ -329,11 +329,11 @@ def main_page():
               timeEl.innerText = startTime + '～' + endTime;
               var titleEl = document.createElement('div');
               titleEl.style.fontSize = '0.8rem';
+              titleEl.style.color = '#555555';
               titleEl.innerText = arg.event.title;
               var container = document.createElement('div');
-              // 複数日に渡る予定の場合、開始日と終了日が異なる
               if(new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()){
-                  container.classList.add("fc-event-multiday");
+                container.classList.add("fc-event-multiday");
               }
               container.appendChild(timeEl);
               container.appendChild(titleEl);
