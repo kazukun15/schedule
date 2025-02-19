@@ -9,15 +9,14 @@ if "users" not in st.session_state:
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 if "page" not in st.session_state:
-    st.session_state.page = "login"  # "login", "register", "main"
+    st.session_state.page = "login"  # login, register, main
 if "events" not in st.session_state:
-    st.session_state.events = []  # 各イベント: {"id", "date", "start", "end", "title", "description", "user"}
+    st.session_state.events = []  # 各イベントは dict: {id, date, start, end, title, description, user}
 if "todos" not in st.session_state:
-    st.session_state.todos = []   # 各 Todo: {"id", "date", "title", "completed", "user"}
+    st.session_state.todos = []   # 各 Todo は dict: {id, date, title, completed, user}
 
 # --- ヘルパー関数 ---
 def serialize_events(user, target_date):
-    # 現在ログインユーザーの、対象日（またはすべて）のイベントを JSON 文字列に変換
     evs = []
     for ev in st.session_state.events:
         if ev["user"] == user and ev["date"] == target_date:
@@ -55,7 +54,7 @@ def register_page():
             st.error("このユーザー名は既に存在します。")
         else:
             st.session_state.users[username] = {"password": password, "department": department}
-            st.success("アカウント作成成功！ログインしてください。")
+            st.success("アカウント作成に成功しました。ログインしてください。")
             st.session_state.page = "login"
     if st.button("ログインページへ"):
         st.session_state.page = "login"
@@ -64,12 +63,12 @@ def logout():
     st.session_state.current_user = None
     st.session_state.page = "login"
 
-# --- メイン画面 ---
+# --- メインページ ---
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout)
 
-    # サイドバー：Todo 管理
+    # --- サイドバー：Todo 管理 ---
     st.sidebar.header("本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
@@ -83,27 +82,26 @@ def main_page():
             }
             st.session_state.todos.append(new_todo)
             st.success("Todo を追加しました。")
-            st.experimental_rerun()
+            # 再描画は自動で行われます
     st.sidebar.markdown("#### Todo 一覧")
-    current_todos = [t for t in st.session_state.todos if t["user"] == st.session_state.current_user and t["date"] == date.today() and not t["completed"]]
+    current_todos = [t for t in st.session_state.todos if t["user"]==st.session_state.current_user and t["date"]==date.today() and not t["completed"]]
     if current_todos:
         for i, todo in enumerate(current_todos):
             st.sidebar.write(f"- {todo['title']}")
             if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
-                # Todo 完了時、削除する
+                # Todo 完了時、削除
                 st.session_state.todos = [t for t in st.session_state.todos if t["id"] != todo["id"]]
-                # また、同じタイトルのイベント（本日のもの）を削除
-                st.session_state.events = [e for e in st.session_state.events if not (e["title"] == todo["title"] and e["user"] == st.session_state.current_user and e["date"] == date.today())]
+                # 同じタイトルのイベント（本日のもの）を削除
+                st.session_state.events = [e for e in st.session_state.events if not (e["title"]==todo["title"] and e["user"]==st.session_state.current_user and e["date"]==date.today())]
                 st.success("Todo 完了")
-                st.experimental_rerun()
+                # 自動で再描画されます
     else:
         st.sidebar.info("Todo はありません。")
 
-    # メインエリア：イベント追加＆カレンダー表示
+    # --- メインエリア：イベント追加 ---
     st.markdown("### 新規イベント追加")
     with st.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
-        # 選択日：ここではカレンダー上のイベントと連動させるため、日付選択も入力
         event_date = st.date_input("日付", value=date.today())
         event_start_time = st.time_input("開始時刻", value=datetime.now().time().replace(second=0, microsecond=0))
         start_dt = datetime.combine(event_date, event_start_time)
@@ -112,7 +110,7 @@ def main_page():
         event_description = st.text_area("備考", height=100)
         if st.form_submit_button("保存"):
             if not event_title:
-                st.error("予定（イベント）のタイトルは必須です。")
+                st.error("タイトルは必須です。")
             else:
                 new_event = {
                     "id": int(datetime.now().timestamp() * 1000),
@@ -125,14 +123,12 @@ def main_page():
                 }
                 st.session_state.events.append(new_event)
                 st.success("予定が保存されました。")
-                st.experimental_rerun()
+                # 再描画は自動で行われるので experimental_rerun() は不要
 
     st.markdown("---")
     st.markdown("### カレンダー")
-    # FullCalendar を st.components.html で埋め込む
-    # ここでは、ログインユーザーの、今日の日付のイベントのみ表示する例です
+    # カレンダー表示用：対象日は本日として、ログインユーザーの本日の予定を表示
     events_json = serialize_events(st.session_state.current_user, date.today())
-    # カレンダー表示用の HTML コード
     html_calendar = """
     <!DOCTYPE html>
     <html>
@@ -173,6 +169,7 @@ def main_page():
               }
             },
             eventClick: function(info) {
+              // ダブルクリックで編集モーダルを起動する処理は省略し、ここではシンプルな削除確認としています。
               if(confirm("この予定を削除しますか？")){
                 info.event.remove();
               }
@@ -190,8 +187,7 @@ def main_page():
               container.appendChild(timeEl);
               container.appendChild(titleEl);
               return { domNodes: [ container ] };
-            },
-            // ここでは編集モーダル連携等は省略。実際はカスタム連携が必要です。
+            }
           });
           calendar.render();
         });
