@@ -80,7 +80,8 @@ def create_user(username, password, department):
 
 def add_event_to_db(title, start_time, end_time, description, owner_id):
     db = SessionLocal()
-    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id, deleted=False)
+    ev = Event(title=title, start_time=start_time, end_time=end_time,
+               description=description, owner_id=owner_id, deleted=False)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -89,7 +90,7 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
-    # 対象日をまたぐイベントも含める条件
+    # 対象日の範囲にまたがるイベントを取得
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     events = db.query(Event).filter(
@@ -212,7 +213,7 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
-    # 手動更新ボタン（必要に応じて）
+    # 手動更新ボタン
     if st.button("更新"):
         try:
             st.experimental_rerun()
@@ -277,7 +278,7 @@ def main_page():
         st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示
-    st.markdown("###")
+    st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
     events_json = serialize_events(st.session_state.current_user.id, target_date)
@@ -315,6 +316,7 @@ def main_page():
             initialView: 'dayGridMonth',
             selectable: true,
             editable: true,
+            dayMaxEvents: true,
             height: 'auto',
             events: %s,
             dayCellDidMount: function(info) {
