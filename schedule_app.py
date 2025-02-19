@@ -6,6 +6,12 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, Boolean, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from streamlit_autorefresh import st_autorefresh
+
+# ---------------------------
+# 自動更新（10秒ごと）
+# ---------------------------
+st_autorefresh(interval=10000, limit=100, key="event_refresh")
 
 # ---------------------------
 # データベース設定 (SQLite)
@@ -196,12 +202,6 @@ def logout_ui():
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
-
-    from streamlit_autorefresh import st_autorefresh
-
-# メインページの冒頭部分で自動更新を設定（例: 10秒ごと）
-st_autorefresh(interval=10000, limit=100, key="event_refresh")
-
     
     # サイドバー: イベント入力フォーム
     st.sidebar.markdown("### 新規予定追加")
@@ -231,6 +231,7 @@ st_autorefresh(interval=10000, limit=100, key="event_refresh")
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+                st.experimental_rerun()
     
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
@@ -239,6 +240,7 @@ st_autorefresh(interval=10000, limit=100, key="event_refresh")
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -255,6 +257,7 @@ st_autorefresh(interval=10000, limit=100, key="event_refresh")
                 db.commit()
                 db.close()
                 st.success("Todo 完了")
+                st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
     
