@@ -3,33 +3,123 @@ import streamlit.components.v1 as components
 import json
 import jpholiday
 from datetime import datetime, date, timedelta
+from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, Boolean, func
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# --- セッション初期化 ---
-if "users" not in st.session_state:
-    st.session_state.users = {}  # {"username": {"password": ..., "department": ...}}
-if "current_user" not in st.session_state:
-    st.session_state.current_user = None
-if "page" not in st.session_state:
-    st.session_state.page = "login"  # login, register, main
-if "events" not in st.session_state:
-    st.session_state.events = []  # 各イベント: {id, date, start, end, title, description, user}
-if "todos" not in st.session_state:
-    st.session_state.todos = []   # 各 Todo: {id, date, title, completed, user}
+# ---------------------------
+# データベース設定
+# ---------------------------
+engine = create_engine("sqlite:///data.db", connect_args={"check_same_thread": False})
+Base = declarative_base()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# --- ヘルパー関数 ---
-def serialize_events(user, target_date):
-    evs = []
-    for ev in st.session_state.events:
-        if ev["user"] == user and ev["date"] == target_date:
-            evs.append({
-                "id": ev["id"],
-                "title": ev["title"],
-                "start": ev["start"].isoformat(),
-                "end": ev["end"].isoformat(),
-                "description": ev["description"]
-            })
-    return json.dumps(evs)
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    password = Column(String, nullable=False)
+    department = Column(String)
 
+class Event(Base):
+    __tablename__ = "events"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    description = Column(String)
+    owner_id = Column(Integer, nullable=False)
+
+class Todo(Base):
+    __tablename__ = "todos"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    date = Column(Date, nullable=False, default=date.today)
+    completed = Column(Boolean, default=False)
+    owner_id = Column(Integer, nullable=False)
+
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# ---------------------------
+# ヘルパー関数（DB操作）
+# ---------------------------
+def get_user(username):
+    db = SessionLocal()
+    user = db.query(User).filter(User.username == username).first()
+    db.close()
+    return user
+
+def create_user(username, password, department):
+    db = SessionLocal()
+    user = User(username=username, password=password, department=department)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.close()
+    return user
+
+def add_event_to_db(title, start_time, end_time, description, owner_id):
+    db = SessionLocal()
+    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id)
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    db.close()
+    return ev
+
+def get_events_from_db(user_id, target_date):
+    db = SessionLocal()
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
+    events = db.query(Event).filter(Event.owner_id == user_id, Event.start_time >= start_of_day, Event.start_time < end_of_day).all()
+    db.close()
+    return events
+
+def delete_event_from_db(event_id, user_id):
+    db = SessionLocal()
+    ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == user_id).first()
+    if ev:
+        db.delete(ev)
+        db.commit()
+        db.close()
+        return True
+    db.close()
+    return False
+
+def add_todo_to_db(title, owner_id):
+    db = SessionLocal()
+    t = Todo(title=title, date=date.today(), completed=False, owner_id=owner_id)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    db.close()
+    return t
+
+def get_todos_from_db(user_id, target_date):
+    db = SessionLocal()
+    todos = db.query(Todo).filter(Todo.owner_id == user_id, Todo.date == target_date, Todo.completed == False).all()
+    db.close()
+    return todos
+
+def complete_todo_in_db(todo_id, owner_id):
+    db = SessionLocal()
+    todo = db.query(Todo).filter(Todo.id == todo_id, Todo.owner_id == owner_id).first()
+    if todo:
+        todo.completed = True
+        db.commit()
+        db.close()
+        return True
+    db.close()
+    return False
+
+# jpholiday を使って祝日を取得
 def get_holidays_for_month(target_date):
     first_day = target_date.replace(day=1)
     if target_date.month == 12:
@@ -45,14 +135,34 @@ def get_holidays_for_month(target_date):
         d += timedelta(days=1)
     return holidays
 
-# --- ユーザー認証 ---
+def serialize_events(user_id, target_date):
+    events = get_events_from_db(user_id, target_date)
+    evs = []
+    for ev in events:
+        evs.append({
+            "id": ev.id,
+            "title": ev.title,
+            "start": ev.start_time.isoformat(),
+            "end": ev.end_time.isoformat(),
+            "description": ev.description
+        })
+    return json.dumps(evs)
+
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+if "page" not in st.session_state:
+    st.session_state.page = "login"
+
+# ユーザー認証
 def login_page():
     st.title("ログイン")
     username = st.text_input("ユーザー名")
     password = st.text_input("パスワード", type="password")
     if st.button("ログイン"):
-        if username in st.session_state.users and st.session_state.users[username]["password"] == password:
-            st.session_state.current_user = username
+        user = get_user(username)
+        if user and user.password == password:
+            st.session_state.current_user = user
             st.session_state.page = "main"
             st.success("ログイン成功！")
         else:
@@ -66,10 +176,10 @@ def register_page():
     password = st.text_input("パスワード", type="password", key="reg_password")
     department = st.text_input("部署", key="reg_department")
     if st.button("登録"):
-        if username in st.session_state.users:
+        if get_user(username):
             st.error("このユーザー名は既に存在します。")
         else:
-            st.session_state.users[username] = {"password": password, "department": department}
+            create_user(username, password, department)
             st.success("アカウント作成に成功しました。ログインしてください。")
             st.session_state.page = "login"
     if st.button("ログインページへ"):
@@ -79,12 +189,11 @@ def logout():
     st.session_state.current_user = None
     st.session_state.page = "login"
 
-# --- メインページ ---
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout)
-
-    # --- サイドバー: イベント入力フォーム ---
+    
+    # サイドバー：イベント入力フォーム
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -103,55 +212,47 @@ def main_page():
             if not event_title:
                 st.error("予定のタイトルは必須です。")
             else:
-                new_event = {
-                    "id": int(datetime.now().timestamp() * 1000),
-                    "date": event_date,
-                    "start": datetime.combine(event_date, event_start_time),
-                    "end": datetime.combine(event_date, event_end_time),
-                    "title": event_title,
-                    "description": event_description,
-                    "user": st.session_state.current_user
-                }
-                st.session_state.events.append(new_event)
+                new_ev = add_event_to_db(
+                    event_title,
+                    datetime.combine(event_date, event_start_time),
+                    datetime.combine(event_date, event_end_time),
+                    event_description,
+                    st.session_state.current_user.id
+                )
                 st.success("予定が保存されました。")
-                st.experimental_rerun()
-
-    # --- サイドバー: Todo 管理 ---
+    # サイドバー： Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
         if st.form_submit_button("Todo 追加") and todo_title:
-            new_todo = {
-                "id": int(datetime.now().timestamp() * 1000),
-                "date": date.today(),
-                "title": todo_title,
-                "completed": False,
-                "user": st.session_state.current_user
-            }
-            st.session_state.todos.append(new_todo)
+            add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
-            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
-    current_todos = [t for t in st.session_state.todos if t["user"] == st.session_state.current_user and t["date"] == date.today() and not t["completed"]]
-    if current_todos:
-        for i, todo in enumerate(current_todos):
-            st.sidebar.write(f"- {todo['title']}")
+    todos = get_todos_from_db(st.session_state.current_user.id, date.today())
+    if todos:
+        for i, todo in enumerate(todos):
+            st.sidebar.write(f"- {todo.title}")
             if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
-                st.session_state.todos = [t for t in st.session_state.todos if t["id"] != todo["id"]]
-                st.session_state.events = [e for e in st.session_state.events if not (e["title"] == todo["title"] and e["user"] == st.session_state.current_user and e["date"] == date.today())]
+                complete_todo_in_db(todo.id, st.session_state.current_user.id)
+                # 同じタイトルの予定（本日のもの）を削除
+                db = SessionLocal()
+                db.query(Event).filter(
+                    Event.owner_id==st.session_state.current_user.id,
+                    func.date(Event.start_time)==date.today(),
+                    Event.title==todo.title
+                ).delete()
+                db.commit()
+                db.close()
                 st.success("Todo 完了")
                 st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
-
-    # --- メインエリア: カレンダー ---
+    
+    # メインエリア：カレンダー表示
     st.markdown("### カレンダー")
-    # 本日のイベントのみを対象とする
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
-    events_json = serialize_events(st.session_state.current_user, target_date)
-    
-    # FullCalendar を埋め込む HTML。以下では、日付をローカル形式に変換する関数 formatLocalDate() を定義して祝日と比較。
+    events_json = serialize_events(st.session_state.current_user.id, target_date)
     html_calendar = """
     <!DOCTYPE html>
     <html>
@@ -170,15 +271,14 @@ def main_page():
     <body>
       <div id='calendar'></div>
       <script>
-        // ローカル日付文字列 (YYYY-MM-DD) を返す関数
         function formatLocalDate(d) {
           var year = d.getFullYear();
-          var month = ("0" + (d.getMonth() + 1)).slice(-2);
+          var month = ("0" + (d.getMonth()+1)).slice(-2);
           var day = ("0" + d.getDate()).slice(-2);
           return year + "-" + month + "-" + day;
         }
         document.addEventListener('DOMContentLoaded', function() {
-          var holidays = %s; // 祝日リスト（YYYY-MM-DD 形式）
+          var holidays = %s;
           var calendarEl = document.getElementById('calendar');
           var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
@@ -188,10 +288,10 @@ def main_page():
             events: %s,
             dayCellDidMount: function(info) {
               var dStr = formatLocalDate(info.date);
-              if (info.date.getDay() === 6) {
+              if(info.date.getDay() === 6) {
                 info.el.style.backgroundColor = "#ABE1FA";
               }
-              if (info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {
+              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {
                 info.el.style.backgroundColor = "#F9C1CF";
               }
             },
@@ -235,10 +335,8 @@ def main_page():
     </body>
     </html>
     """ % (json.dumps(holidays), events_json)
-    
     components.html(html_calendar, height=700)
 
-# --- ページ制御 ---
 if st.session_state.current_user is None:
     if st.session_state.page == "register":
         register_page()
