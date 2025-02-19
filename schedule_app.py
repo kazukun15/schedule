@@ -80,7 +80,8 @@ def create_user(username, password, department):
 
 def add_event_to_db(title, start_time, end_time, description, owner_id):
     db = SessionLocal()
-    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id, deleted=False)
+    ev = Event(title=title, start_time=start_time, end_time=end_time,
+               description=description, owner_id=owner_id, deleted=False)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -89,7 +90,6 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
-    # 修正: 対象日の範囲に重なるイベント全てを取得
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     events = db.query(Event).filter(
@@ -212,10 +212,14 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
-    # 更新ボタンを追加（手動更新用）
-    if st.button("更新"):
-        st.experimental_rerun()
     
+    # 更新ボタン（手動再描画）
+    if st.button("更新"):
+        try:
+            st.experimental_rerun()
+        except Exception:
+            pass
+
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
     # サイドバー: イベント入力フォーム
