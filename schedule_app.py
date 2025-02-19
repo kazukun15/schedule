@@ -2,17 +2,19 @@ import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
-# セッションステート初期化（ユーザー認証・Todo・ページ切替用）
+# セッション初期化（簡易ユーザー認証・Todo・イベント管理）
 if "users" not in st.session_state:
-    st.session_state.users = {}  # {username: {"password": ...}}
+    st.session_state.users = {}  # {username: {"password": ..., "department": ...}}
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 if "page" not in st.session_state:
-    st.session_state.page = "login"  # "login" or "register" or "main"
+    st.session_state.page = "login"  # login, register, main
+if "events" not in st.session_state:
+    st.session_state.events = []  # 各イベントは dict: {id, date, start, end, title, description, user}
 if "todos" not in st.session_state:
-    st.session_state.todos = []  # Todo リスト（例：リストの各要素は文字列）
+    st.session_state.todos = []   # 各 Todo は dict: {id, date, title, completed, user}
 
-# --- ユーザー認証用ページ ---
+# --- ユーザー認証関連 ---
 def login_page():
     st.title("ログイン")
     username = st.text_input("ユーザー名")
@@ -42,38 +44,49 @@ def register_page():
     if st.button("ログインページへ"):
         st.session_state.page = "login"
 
-# --- メインページ（カレンダー中心の画面） ---
+def logout():
+    st.session_state.current_user = None
+    st.session_state.page = "login"
+
+# --- メインページ（カレンダー中心） ---
 def main_page():
-    # ヘッダー：タイトルとログアウトボタン
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout)
 
     # サイドバー：本日の Todo 管理
     st.sidebar.header("本日の Todo")
-    # Todo 追加フォーム（シンプルな入力）
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
-        submitted = st.form_submit_button("Todo 追加")
-        if submitted and todo_title:
-            st.session_state.todos.append(todo_title)
+        if st.form_submit_button("Todo 追加") and todo_title:
+            new_todo = {
+                "id": int(datetime.now().timestamp() * 1000),
+                "date": date.today(),
+                "title": todo_title,
+                "completed": False,
+                "user": st.session_state.current_user
+            }
+            st.session_state.todos.append(new_todo)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     if st.session_state.todos:
-        for i, todo in enumerate(st.session_state.todos):
-            st.sidebar.write(f"- {todo}")
-            # Todo 完了ボタン（クリックすると Todo と同じタイトルのイベントを削除）
+        for i, todo in enumerate([t for t in st.session_state.todos if t["user"]==st.session_state.current_user and t["date"]==date.today() and not t["completed"]]):
+            st.sidebar.write(f"- {todo['title']}")
             if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
-                # 削除：Todo を削除
-                st.session_state.todos.pop(i)
-                # ※本サンプルでは「同じタイトルのイベント削除」は実装していません
+                st.session_state.todos = [t for t in st.session_state.todos if t["id"] != todo["id"]]
+                # ここで、Todo 完了時に同じタイトルのイベントを削除する処理
+                st.session_state.events = [e for e in st.session_state.events if not (e["title"]==todo["title"] and e["user"]==st.session_state.current_user and e["date"]==date.today())]
+                st.success("Todo 完了")
                 st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
 
-    # メインエリア：カレンダー
+    # カレンダーエリア：ここでは st.components.v1.html を利用して FullCalendar を埋め込む
     st.markdown("### カレンダー")
-    # ここでは FullCalendar を埋め込む
-    html_calendar = f"""
+    # 選択日（カレンダーで扱う日付、ここではシンプルに入力する）
+    selected_date = st.date_input("日付を選択", value=date.today())
+    # HTML/JS で FullCalendar を埋め込む（※実際はサーバー連携が必要な部分ですが、ここではシンプルなデモ）
+    html_calendar = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -82,70 +95,71 @@ def main_page():
       <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.10.1/main.min.css' rel='stylesheet' />
       <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.10.1/main.min.js'></script>
       <style>
-        body {{
-          margin: 0; padding: 0; font-family: Arial, sans-serif;
-        }}
-        #calendar {{
-          max-width: 900px;
-          margin: 20px auto;
-        }}
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #calendar { max-width: 900px; margin: 20px auto; }
       </style>
     </head>
     <body>
       <div id='calendar'></div>
       <script>
-        document.addEventListener('DOMContentLoaded', function() {{
+        document.addEventListener('DOMContentLoaded', function() {
           var calendarEl = document.getElementById('calendar');
-          var calendar = new FullCalendar.Calendar(calendarEl, {{
+          var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             selectable: true,
             editable: true,
-            // サンプルイベント（実際はサーバー連携などで動的に生成）
-            events: [
-              // 例: {{ id: 1, title: "会議", start: "{(date.today()).isoformat()}T09:00:00", end: "{(date.today()).isoformat()}T10:00:00" }}
-            ],
-            dateClick: function(info) {{
-              // 日付クリックで簡単なイベント追加プロンプト
+            events: %s, 
+            dateClick: function(info) {
               var title = prompt("イベントタイトルを入力してください", "新規イベント");
-              if(title){{
+              if(title){
                 var start = info.date;
-                var end = new Date(start.getTime() + 60*60*1000); // 1時間後
-                var newEvent = {{
+                var end = new Date(start.getTime() + 60*60*1000);
+                var newEvent = {
                   id: Date.now(),
                   title: title,
                   start: start.toISOString(),
                   end: end.toISOString()
-                }};
+                };
                 calendar.addEvent(newEvent);
-                // ※このサンプルは localStorage 等で保存していません
-              }}
-            }},
-            eventDrop: function(info) {{
-              // ドラッグ後の更新処理（ここではアラート表示のみ）
+                // Streamlit 側へは連携していません（このデモはローカル状態のみ）
+              }
+            },
+            eventDrop: function(info) {
               alert("イベント移動: " + info.event.title);
-            }},
-            eventResize: function(info) {{
+            },
+            eventResize: function(info) {
               alert("イベントリサイズ: " + info.event.title);
-            }},
-            eventClick: function(info) {{
+            },
+            eventClick: function(info) {
               if(confirm("このイベントを削除しますか？")){
                 info.event.remove();
-              }}
-            }}
-          }});
+              }
+            },
+            eventContent: function(arg) {
+              var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
+              var endTime = FullCalendar.formatDate(arg.event.end, {hour: '2-digit', minute: '2-digit'});
+              var timeEl = document.createElement('div');
+              timeEl.style.fontSize = '0.9rem';
+              timeEl.innerText = startTime + '～' + endTime;
+              var titleEl = document.createElement('div');
+              titleEl.style.fontSize = '0.8rem';
+              titleEl.innerText = arg.event.title;
+              var container = document.createElement('div');
+              container.appendChild(timeEl);
+              container.appendChild(titleEl);
+              return { domNodes: [ container ] };
+            }
+          });
           calendar.render();
-        }});
+        });
       </script>
     </body>
     </html>
-    """
+    """ % (str([e for e in st.session_state.events if e["user"]==st.session_state.current_user and e["date"]==selected_date]))
+    # 注意：上記は簡易的にセッションのイベントリストを JSON 風に出力しているだけなので、実際は適切な変換が必要です
     components.html(html_calendar, height=700)
 
-def logout():
-    st.session_state.current_user = None
-    st.session_state.page = "login"
-
-# --- ページ表示の制御 ---
+# ページ制御
 if st.session_state.current_user is None:
     if st.session_state.page == "register":
         register_page()
