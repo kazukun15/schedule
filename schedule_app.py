@@ -89,13 +89,14 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
 
 def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
+    # 修正: 対象日の範囲に重なるイベント全てを取得
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     events = db.query(Event).filter(
         Event.owner_id == owner_id,
         Event.deleted == False,
-        Event.start_time >= start_of_day,
-        Event.start_time <= end_of_day
+        Event.start_time <= end_of_day,
+        Event.end_time >= start_of_day
     ).all()
     db.close()
     return events
@@ -211,6 +212,10 @@ def logout_ui():
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
+    # 更新ボタンを追加（手動更新用）
+    if st.button("更新"):
+        st.experimental_rerun()
+    
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
     # サイドバー: イベント入力フォーム
@@ -269,7 +274,7 @@ def main_page():
         st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示
-    st.markdown("###")
+    st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
     events_json = serialize_events(st.session_state.current_user.id, target_date)
