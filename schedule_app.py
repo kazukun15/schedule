@@ -225,8 +225,6 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
-                # 再描画は自動更新に任せる
-
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
@@ -241,7 +239,6 @@ def main_page():
             st.sidebar.write(f"- {todo.title}")
             if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
                 complete_todo_in_db(todo.id, st.session_state.current_user.id)
-                # 同じタイトルの予定（本日のもの）を削除
                 db = SessionLocal()
                 db.query(Event).filter(
                     Event.owner_id == st.session_state.current_user.id,
@@ -274,6 +271,8 @@ def main_page():
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
         .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
         .fc-event-time { font-size: 0.7rem; }
+        /* 複数日に渡る予定の場合は、薄い青色の帯 (#D0EFFF) を適用 */
+        .fc-event-multiday { background-color: #D0EFFF !important; }
       </style>
     </head>
     <body>
@@ -332,6 +331,10 @@ def main_page():
               titleEl.style.fontSize = '0.8rem';
               titleEl.innerText = arg.event.title;
               var container = document.createElement('div');
+              // 複数日に渡る予定の場合、開始日と終了日が異なる
+              if(new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()){
+                  container.classList.add("fc-event-multiday");
+              }
               container.appendChild(timeEl);
               container.appendChild(titleEl);
               return { domNodes: [ container ] };
