@@ -1,9 +1,4 @@
 import streamlit as st
-
-st.set_page_config(layout="wide")
-# 以下、その他のコード...
-
-import streamlit as st
 import streamlit.components.v1 as components
 import json
 import jpholiday
@@ -23,7 +18,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # 平文保存（実際はハッシュ化が必要）
+    password = Column(String, nullable=False)  # ※実際はハッシュ化すべき
     department = Column(String)
 
 class Event(Base):
@@ -53,7 +48,7 @@ def get_db():
         db.close()
 
 # ---------------------------
-# セッション初期化（Streamlit）
+# Streamlit セッション初期化
 # ---------------------------
 st.session_state.setdefault("current_user", None)
 st.session_state.setdefault("page", "login")  # login, register, main
@@ -159,7 +154,7 @@ def serialize_events(owner_id, target_date):
     return json.dumps(evs)
 
 # ---------------------------
-# Streamlit UI
+# Streamlit UI: ユーザー認証
 # ---------------------------
 def login_page():
     st.title("ログイン")
@@ -195,11 +190,14 @@ def logout_ui():
     st.session_state.current_user = None
     st.session_state.page = "login"
 
+# ---------------------------
+# Streamlit UI: メインページ
+# ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # --- サイドバー: イベント入力フォーム ---
+    # サイドバー：イベント入力フォーム（入力画面はサイドバーに配置）
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -219,7 +217,7 @@ def main_page():
             if not event_title:
                 st.error("予定のタイトルは必須です。")
             else:
-                new_event = add_event_to_db(
+                add_event_to_db(
                     event_title,
                     datetime.combine(event_start_date, event_start_time),
                     datetime.combine(event_end_date, event_end_time),
@@ -229,7 +227,7 @@ def main_page():
                 st.success("予定が保存されました。")
                 st.experimental_rerun()
     
-    # --- サイドバー: Todo 管理 ---
+    # サイドバー： Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
@@ -258,7 +256,7 @@ def main_page():
     else:
         st.sidebar.info("Todo はありません。")
     
-    # --- メインエリア: カレンダー表示 ---
+    # メインエリア：カレンダー表示
     st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
@@ -276,7 +274,6 @@ def main_page():
         #calendar { max-width: 900px; margin: 20px auto; }
         .fc-day-sat { background-color: #ABE1FA !important; }
         .fc-day-sun, .fc-day-holiday { background-color: #F9C1CF !important; }
-        /* イベント表示の調整：文字サイズやオーバーフロー対策 */
         .fc-event-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem; }
         .fc-event-time { font-size: 0.7rem; }
       </style>
