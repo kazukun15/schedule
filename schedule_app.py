@@ -35,6 +35,7 @@ class Event(Base):
     end_time = Column(DateTime, nullable=False)
     description = Column(String)
     owner_id = Column(Integer, nullable=False)
+    deleted = Column(Boolean, default=False)  # 疑似削除用フラグ
 
 class Todo(Base):
     __tablename__ = "todos"
@@ -79,7 +80,7 @@ def create_user(username, password, department):
 
 def add_event_to_db(title, start_time, end_time, description, owner_id):
     db = SessionLocal()
-    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id)
+    ev = Event(title=title, start_time=start_time, end_time=end_time, description=description, owner_id=owner_id, deleted=False)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -90,7 +91,12 @@ def get_events_from_db(owner_id, target_date):
     db = SessionLocal()
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
-    events = db.query(Event).filter(Event.owner_id == owner_id, Event.start_time >= start_of_day, Event.start_time <= end_of_day).all()
+    events = db.query(Event).filter(
+        Event.owner_id == owner_id,
+        Event.deleted == False,
+        Event.start_time >= start_of_day,
+        Event.start_time <= end_of_day
+    ).all()
     db.close()
     return events
 
@@ -98,7 +104,7 @@ def delete_event_from_db(event_id, owner_id):
     db = SessionLocal()
     ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
     if ev:
-        db.delete(ev)
+        ev.deleted = True  # 疑似削除
         db.commit()
         db.close()
         return True
@@ -116,7 +122,11 @@ def add_todo_to_db(title, owner_id):
 
 def get_todos_from_db(owner_id, target_date):
     db = SessionLocal()
-    todos = db.query(Todo).filter(Todo.owner_id == owner_id, Todo.date == target_date, Todo.completed == False).all()
+    todos = db.query(Todo).filter(
+        Todo.owner_id == owner_id, 
+        Todo.date == target_date, 
+        Todo.completed == False
+    ).all()
     db.close()
     return todos
 
@@ -231,6 +241,7 @@ def main_page():
                     st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
+                st.experimental_rerun()
     
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
@@ -239,6 +250,7 @@ def main_page():
         if st.form_submit_button("Todo 追加") and todo_title:
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -255,11 +267,12 @@ def main_page():
                 db.commit()
                 db.close()
                 st.success("Todo 完了")
+                st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示
-    st.markdown("###")
+    st.markdown("### カレンダー")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
     events_json = serialize_events(st.session_state.current_user.id, target_date)
