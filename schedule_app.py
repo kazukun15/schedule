@@ -1,4 +1,9 @@
 import streamlit as st
+
+st.set_page_config(layout="wide")
+# 以下、その他のコード...
+
+import streamlit as st
 import streamlit.components.v1 as components
 import json
 import jpholiday
