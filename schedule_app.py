@@ -277,7 +277,7 @@ def main_page():
         st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示
-    st.markdown("### カレンダー")
+    st.markdown("###")
     target_date = date.today()
     holidays = get_holidays_for_month(target_date)
     events_json = serialize_events(st.session_state.current_user.id, target_date)
