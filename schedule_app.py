@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 import json
 from datetime import datetime, date, timedelta
 
-# --- セッション初期化 ---
+# --- セッションステートの初期化 ---
 if "users" not in st.session_state:
     st.session_state.users = {}  # 例: {"alice": {"password": "123", "department": "総務"}}
 if "current_user" not in st.session_state:
@@ -17,6 +17,7 @@ if "todos" not in st.session_state:
 
 # --- ヘルパー関数 ---
 def serialize_events(user, target_date):
+    # 対象日・ユーザーのイベントを JSON 形式に変換
     evs = []
     for ev in st.session_state.events:
         if ev["user"] == user and ev["date"] == target_date:
@@ -82,19 +83,17 @@ def main_page():
             }
             st.session_state.todos.append(new_todo)
             st.success("Todo を追加しました。")
-            # 再描画は自動で行われます
     st.sidebar.markdown("#### Todo 一覧")
-    current_todos = [t for t in st.session_state.todos if t["user"]==st.session_state.current_user and t["date"]==date.today() and not t["completed"]]
+    current_todos = [t for t in st.session_state.todos if t["user"] == st.session_state.current_user and t["date"] == date.today() and not t["completed"]]
     if current_todos:
         for i, todo in enumerate(current_todos):
             st.sidebar.write(f"- {todo['title']}")
             if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
-                # Todo 完了時、削除
+                # 完了時、Todo と同じタイトルのイベント（本日のもの）を削除
                 st.session_state.todos = [t for t in st.session_state.todos if t["id"] != todo["id"]]
-                # 同じタイトルのイベント（本日のもの）を削除
-                st.session_state.events = [e for e in st.session_state.events if not (e["title"]==todo["title"] and e["user"]==st.session_state.current_user and e["date"]==date.today())]
+                st.session_state.events = [e for e in st.session_state.events if not (e["title"] == todo["title"] and e["user"] == st.session_state.current_user and e["date"] == date.today())]
                 st.success("Todo 完了")
-                # 自動で再描画されます
+                st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
 
@@ -108,9 +107,10 @@ def main_page():
         default_end = (start_dt + timedelta(hours=1)).time()
         event_end_time = st.time_input("終了時刻", value=default_end)
         event_description = st.text_area("備考", height=100)
-        if st.form_submit_button("保存"):
+        submitted = st.form_submit_button("保存")
+        if submitted:
             if not event_title:
-                st.error("タイトルは必須です。")
+                st.error("予定のタイトルは必須です。")
             else:
                 new_event = {
                     "id": int(datetime.now().timestamp() * 1000),
@@ -123,11 +123,10 @@ def main_page():
                 }
                 st.session_state.events.append(new_event)
                 st.success("予定が保存されました。")
-                # 再描画は自動で行われるので experimental_rerun() は不要
-
+    
     st.markdown("---")
     st.markdown("### カレンダー")
-    # カレンダー表示用：対象日は本日として、ログインユーザーの本日の予定を表示
+    # カレンダーにはログインユーザーの本日の予定を表示
     events_json = serialize_events(st.session_state.current_user, date.today())
     html_calendar = """
     <!DOCTYPE html>
@@ -153,6 +152,7 @@ def main_page():
             initialView: 'dayGridMonth',
             selectable: true,
             editable: true,
+            height: 'auto',
             events: %s,
             dateClick: function(info) {
               var title = prompt("予定のタイトルを入力してください", "新規予定");
@@ -169,7 +169,7 @@ def main_page():
               }
             },
             eventClick: function(info) {
-              // ダブルクリックで編集モーダルを起動する処理は省略し、ここではシンプルな削除確認としています。
+              // ダブルクリックで編集モーダルを表示する処理は省略
               if(confirm("この予定を削除しますか？")){
                 info.event.remove();
               }
