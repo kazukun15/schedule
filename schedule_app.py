@@ -196,6 +196,12 @@ def logout_ui():
 def main_page():
     st.title("海光園スケジュールシステム")
     st.sidebar.button("ログアウト", on_click=logout_ui)
+
+    from streamlit_autorefresh import st_autorefresh
+
+# メインページの冒頭部分で自動更新を設定（例: 10秒ごと）
+st_autorefresh(interval=10000, limit=100, key="event_refresh")
+
     
     # サイドバー: イベント入力フォーム
     st.sidebar.markdown("### 新規予定追加")
