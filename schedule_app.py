@@ -10,7 +10,7 @@ if "users" not in st.session_state:
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 if "page" not in st.session_state:
-    st.session_state.page = "login"  # "login", "register", "main"
+    st.session_state.page = "login"  # login, register, main
 if "events" not in st.session_state:
     st.session_state.events = []  # 各イベント: {id, date, start, end, title, description, user}
 if "todos" not in st.session_state:
@@ -31,7 +31,6 @@ def serialize_events(user, target_date):
     return json.dumps(evs)
 
 def get_holidays_for_month(target_date):
-    # 指定された target_date の月の祝日を ISO 形式のリストとして返す
     first_day = target_date.replace(day=1)
     if target_date.month == 12:
         next_month = target_date.replace(year=target_date.year+1, month=1, day=1)
@@ -115,6 +114,7 @@ def main_page():
                 }
                 st.session_state.events.append(new_event)
                 st.success("予定が保存されました。")
+                st.experimental_rerun()
 
     # --- サイドバー: Todo 管理 ---
     st.sidebar.markdown("### 本日の Todo")
@@ -130,6 +130,7 @@ def main_page():
             }
             st.session_state.todos.append(new_todo)
             st.success("Todo を追加しました。")
+            st.experimental_rerun()
     st.sidebar.markdown("#### Todo 一覧")
     current_todos = [t for t in st.session_state.todos if t["user"] == st.session_state.current_user and t["date"] == date.today() and not t["completed"]]
     if current_todos:
@@ -145,11 +146,12 @@ def main_page():
 
     # --- メインエリア: カレンダー ---
     st.markdown("### カレンダー")
-    # 選択日: 今回は本日固定とする
+    # 本日のイベントのみを対象とする
     target_date = date.today()
-    # 日本の祝日データを取得（対象月）
     holidays = get_holidays_for_month(target_date)
     events_json = serialize_events(st.session_state.current_user, target_date)
+    
+    # FullCalendar を埋め込む HTML。以下では、日付をローカル形式に変換する関数 formatLocalDate() を定義して祝日と比較。
     html_calendar = """
     <!DOCTYPE html>
     <html>
@@ -168,8 +170,15 @@ def main_page():
     <body>
       <div id='calendar'></div>
       <script>
+        // ローカル日付文字列 (YYYY-MM-DD) を返す関数
+        function formatLocalDate(d) {
+          var year = d.getFullYear();
+          var month = ("0" + (d.getMonth() + 1)).slice(-2);
+          var day = ("0" + d.getDate()).slice(-2);
+          return year + "-" + month + "-" + day;
+        }
         document.addEventListener('DOMContentLoaded', function() {
-          var holidays = %s;
+          var holidays = %s; // 祝日リスト（YYYY-MM-DD 形式）
           var calendarEl = document.getElementById('calendar');
           var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
@@ -178,11 +187,11 @@ def main_page():
             height: 'auto',
             events: %s,
             dayCellDidMount: function(info) {
-              var d = info.date.toISOString().split('T')[0];
-              if(info.date.getDay() === 6){
+              var dStr = formatLocalDate(info.date);
+              if (info.date.getDay() === 6) {
                 info.el.style.backgroundColor = "#ABE1FA";
               }
-              if(info.date.getDay() === 0 || holidays.indexOf(d) !== -1){
+              if (info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {
                 info.el.style.backgroundColor = "#F9C1CF";
               }
             },
@@ -226,6 +235,7 @@ def main_page():
     </body>
     </html>
     """ % (json.dumps(holidays), events_json)
+    
     components.html(html_calendar, height=700)
 
 # --- ページ制御 ---
