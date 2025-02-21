@@ -4,7 +4,7 @@ import streamlit.components.v1 as components
 import json
 import jpholiday
 from datetime import datetime, date, timedelta
-from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, Boolean, func
+from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, Boolean, func, LargeBinary # LargeBinary を追加
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from streamlit_autorefresh import st_autorefresh
@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # ハッシュ化されたパスワードを保存
+    password = Column(LargeBinary, nullable=False)  # ハッシュ化されたパスワードを LargeBinary で保存 # String から LargeBinary に変更
     department = Column(String)
 
 class Event(Base):
@@ -69,7 +69,7 @@ def get_user(username):
 def create_user(username, password, department):
     with SessionLocal() as db:
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) # パスワードをハッシュ化
-        user = User(username=username, password=hashed_password.decode('utf-8'), department=department) # ハッシュ化されたパスワードを保存
+        user = User(username=username, password=hashed_password, department=department) # ハッシュ化されたパスワード (バイト列) を保存 # decode('utf-8') を削除
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -197,7 +197,11 @@ def login_page():
         user = get_user(username)
         if user: # user が None でないことを確認 (念のため)
             hashed_password_db = user.password # DBから取得したハッシュ化パスワード
+            print(f"デバッグログ: DBから取得したハッシュ値 (型): {type(hashed_password_db)}") # 型情報をログ出力
+            print(f"デバッグログ: DBから取得したハッシュ値 (repr): {repr(hashed_password_db)}") # repr で詳細な内容を出力
             password_入力 = password.encode('utf-8') # 入力パスワードをバイト列に
+
+            print(f"デバッグログ: 入力パスワード (バイト列): {password_入力}") # 入力パスワードのバイト列表現をログ出力
 
             # hashed_password_db が文字列型の場合のみエンコードを試みる (バイト列の場合はそのまま)
             if isinstance(hashed_password_db, str):
@@ -205,15 +209,20 @@ def login_page():
             else:
                 hashed_password_db_bytes = hashed_password_db # バイト列のまま使用
 
+            print(f"デバッグログ: 検証に使用するDBハッシュ値 (バイト列): {hashed_password_db_bytes}") # 検証に使用するDBハッシュ値のバイト列表現をログ出力
+
             try: # エンコードエラーを捕捉するため try-except を追加
                 if bcrypt.checkpw(password_入力, hashed_password_db_bytes):
+                    print("デバッグログ: bcrypt.checkpw 成功") # 検証成功ログ
                     st.session_state.current_user = user
                     st.session_state.page = "main"
                     st.success("ログイン成功！")
                     st.experimental_rerun()
                 else:
+                    print("デバッグログ: bcrypt.checkpw 失敗 (パスワード不一致)") # 検証失敗ログ（パスワード不一致）
                     st.error("ユーザー名またはパスワードが正しくありません。")
             except ValueError as e: # bcrypt.checkpw で ValueError が発生した場合のエラーハンドリング
+                print(f"デバッグログ: bcrypt.checkpw で ValueError 発生: {e}") # ValueError の詳細ログ
                 st.error(f"ログイン処理でエラーが発生しました: {e}") # より具体的なエラーメッセージを表示 (デバッグ用)
                 st.error("パスワードの検証に失敗しました。ユーザー名またはパスワードが正しくないか、システムエラーの可能性があります。") # ユーザー向けのエラーメッセージ
                 print(f"bcrypt.checkpw エラー詳細: {e}") # ログにもエラー詳細を記録
