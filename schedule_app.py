@@ -88,7 +88,7 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
         return ev
 
 def get_events_from_db(owner_id, target_date):
-    # 本日の予定（または指定日）取得（当日をまたぐものも含む）
+    # 対象日のイベント（当日をまたぐものも含む）
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     with SessionLocal() as db:
@@ -190,7 +190,7 @@ def show_edit_event_form(event):
         new_end_time = st.time_input("終了時刻", value=event.end_time.time())
         new_description = st.text_area("備考", value=event.description, height=100)
         if st.form_submit_button("更新"):
-            # 既存のイベントを削除し、新たに更新内容でイベントを追加
+            # 削除して新規追加（編集）
             delete_event_from_db(event.id, st.session_state.current_user.id)
             add_event_to_db(
                 new_title,
@@ -250,7 +250,7 @@ def main_page():
     
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # 編集フォームの表示（もし編集対象が選択されていれば）
+    # 編集フォームの表示（編集対象があれば）
     if st.session_state.edit_event_id is not None:
         event_to_edit = get_event_by_id(st.session_state.edit_event_id, st.session_state.current_user.id)
         if event_to_edit:
