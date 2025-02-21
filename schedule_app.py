@@ -352,7 +352,7 @@ def main_page():
         st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示（表示する月を選択）
-    st.markdown("### カレンダー表示")
+    st.markdown("###")
     display_date = st.date_input("カレンダー表示日", value=date.today(), key="calendar_date")
     first_day_of_month = display_date.replace(day=1)
     if display_date.month == 12:
