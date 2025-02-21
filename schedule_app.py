@@ -88,7 +88,7 @@ def add_event_to_db(title, start_time, end_time, description, owner_id):
         return ev
 
 def get_events_from_db(owner_id, target_date):
-    # 対象日のイベントを取得（当日をまたぐものも含む）
+    # 本日の予定（または指定日）取得（当日をまたぐものも含む）
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     with SessionLocal() as db:
@@ -101,7 +101,7 @@ def get_events_from_db(owner_id, target_date):
         return events
 
 def get_events_for_period(owner_id, start_date, end_date):
-    # 指定期間内に重なるイベント取得（カレンダー用）
+    # 指定期間内に重なるイベント取得（カレンダー表示用）
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     with SessionLocal() as db:
@@ -190,6 +190,7 @@ def show_edit_event_form(event):
         new_end_time = st.time_input("終了時刻", value=event.end_time.time())
         new_description = st.text_area("備考", value=event.description, height=100)
         if st.form_submit_button("更新"):
+            # 既存のイベントを削除し、新たに更新内容でイベントを追加
             delete_event_from_db(event.id, st.session_state.current_user.id)
             add_event_to_db(
                 new_title,
@@ -214,12 +215,10 @@ def login_page():
             st.session_state.current_user = user
             st.session_state.page = "main"
             st.success("ログイン成功！")
-            st.experimental_rerun()
         else:
             st.error("ユーザー名またはパスワードが正しくありません。")
     if st.button("アカウント作成"):
         st.session_state.page = "register"
-        st.experimental_rerun()
 
 def register_page():
     st.title("アカウント作成")
@@ -233,15 +232,12 @@ def register_page():
             create_user(username, password, department)
             st.success("アカウント作成に成功しました。ログインしてください。")
             st.session_state.page = "login"
-            st.experimental_rerun()
     if st.button("ログインページへ"):
         st.session_state.page = "login"
-        st.experimental_rerun()
 
 def logout_ui():
     st.session_state.current_user = None
     st.session_state.page = "login"
-    st.experimental_rerun()
 
 # ---------------------------
 # Streamlit UI: メインページ
