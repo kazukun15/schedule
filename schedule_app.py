@@ -8,11 +8,12 @@ from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, B
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from streamlit_autorefresh import st_autorefresh
+import bcrypt  # パスワードハッシュ化用ライブラリを追加
 
 # ---------------------------
-# 自動更新（10秒ごと）
+# 自動更新（30秒ごと） - 間隔を調整
 # ---------------------------
-st_autorefresh(interval=10000, limit=100, key="event_refresh")
+st_autorefresh(interval=30000, limit=100, key="event_refresh")
 
 # ---------------------------
 # データベース設定 (SQLite)
@@ -26,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # ※実際はハッシュ化すべき
+    password = Column(String, nullable=False)  # ハッシュ化されたパスワードを保存
     department = Column(String)
 
 class Event(Base):
@@ -67,7 +68,8 @@ def get_user(username):
 
 def create_user(username, password, department):
     with SessionLocal() as db:
-        user = User(username=username, password=password, department=department)
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) # パスワードをハッシュ化
+        user = User(username=username, password=hashed_password.decode('utf-8'), department=department) # ハッシュ化されたパスワードを保存
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -126,6 +128,9 @@ def delete_event_from_db(event_id, owner_id):
             db.commit()
             return True
         return False
+
+def complete_event_in_db(event_id, owner_id): # イベント完了処理を実装 (論理削除)
+    return delete_event_from_db(event_id, owner_id) # 削除関数を再利用
 
 def add_todo_to_db(title, owner_id):
     with SessionLocal() as db:
@@ -190,7 +195,7 @@ def login_page():
     password = st.text_input("パスワード", type="password")
     if st.button("ログイン"):
         user = get_user(username)
-        if user and user.password == password:
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')): # パスワードをハッシュ化して比較
             st.session_state.current_user = user
             st.session_state.page = "main"
             st.success("ログイン成功！")
@@ -255,13 +260,13 @@ def show_edit_event_form(event):
 # ---------------------------
 def main_page():
     st.title("海光園スケジュールシステム")
-    
+
     # 手動更新ボタン
     if st.button("更新"):
         st.experimental_rerun()
 
     st.sidebar.button("ログアウト", on_click=logout_ui)
-    
+
     # サイドバー: 編集フォーム表示（もし編集対象が選択されていれば）
     if st.session_state.edit_event_id is not None:
         event_to_edit = get_event_by_id(st.session_state.edit_event_id, st.session_state.current_user.id)
@@ -269,7 +274,7 @@ def main_page():
             show_edit_event_form(event_to_edit)
         else:
             st.session_state.edit_event_id = None  # 存在しなければリセット
-    
+
     # サイドバー: イベント入力フォーム（新規追加）
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
@@ -299,15 +304,16 @@ def main_page():
                 )
                 st.success("予定が保存されました。")
                 st.experimental_rerun()
-    
-    # サイドバー: 今日の予定一覧（完了・編集ボタン付き）
+
+    # サイドバー: 本日の予定一覧（完了・編集ボタン付き）
     st.sidebar.markdown("### 本日の予定一覧")
+    st.sidebar.caption("※完了にすると、本日の予定から削除されます。") # 説明文言を追加
     events_today = get_events_from_db(st.session_state.current_user.id, date.today())
     if events_today:
         for ev in events_today:
             st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
             col1, col2 = st.sidebar.columns(2)
-            if col1.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
+            if col1.button("完了", key=f"complete_event_{ev.id}"): # ボタンラベルを修正
                 complete_event_in_db(ev.id, st.session_state.current_user.id)
                 st.success("予定を完了しました。")
                 st.experimental_rerun()
@@ -316,7 +322,7 @@ def main_page():
                 st.experimental_rerun()
     else:
         st.sidebar.info("本日の予定はありません。")
-    
+
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
@@ -325,7 +331,7 @@ def main_page():
             add_todo_to_db(todo_title, st.session_state.current_user.id)
             st.success("Todo を追加しました。")
             st.experimental_rerun()
-    
+
     st.sidebar.markdown("#### Todo 一覧")
     todos = get_todos_from_db(st.session_state.current_user.id, date.today())
     if todos:
@@ -344,7 +350,7 @@ def main_page():
                 st.experimental_rerun()
     else:
         st.sidebar.info("Todo はありません。")
-    
+
     # メインエリア: カレンダー表示（表示する月を選択）
     st.markdown("### カレンダー表示")
     display_date = st.date_input("カレンダー表示日", value=date.today(), key="calendar_date")
@@ -356,7 +362,7 @@ def main_page():
     last_day_of_month = first_day_next_month - timedelta(days=1)
     events_json = serialize_events_for_period(st.session_state.current_user.id, first_day_of_month, last_day_of_month)
     holidays = get_holidays_for_month(first_day_of_month)
-    
+
     html_calendar = f"""
     <!DOCTYPE html>
     <html>
@@ -447,7 +453,7 @@ def main_page():
     </body>
     </html>
     """
-    
+
     components.html(html_calendar, height=700)
 
 if st.session_state.current_user is None:
