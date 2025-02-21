@@ -21,7 +21,7 @@ engine = create_engine("sqlite:///data.db", connect_args={"check_same_thread": F
 Base = declarative_base()
 SessionLocal = sessionmaker(bind=engine)
 
-# テーブル定義（Event に color カラムを追加）
+# テーブル定義
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -38,7 +38,6 @@ class Event(Base):
     description = Column(String)
     owner_id = Column(Integer, nullable=False)
     deleted = Column(Boolean, default=False)  # 論理削除用フラグ
-    color = Column(String, default="#FFCCCC")  # イベント背景色（初期値：赤系）
 
 class Todo(Base):
     __tablename__ = "todos"
@@ -58,17 +57,6 @@ st.session_state.setdefault("page", "login")  # "login", "register", "main"
 if "edit_event_id" not in st.session_state:
     st.session_state.edit_event_id = None
 
-# 定義しておく背景色の選択肢
-colors = {
-    "赤": "#FFCCCC",
-    "緑": "#CCFFCC",
-    "青": "#CCCCFF",
-    "黄": "#FFFFCC",
-    "マゼンタ": "#FFCCFF",
-    "シアン": "#CCFFFF",
-    "グレー": "#F0F0F0"
-}
-
 # ---------------------------
 # ヘルパー関数（DB操作）
 # ---------------------------
@@ -84,7 +72,7 @@ def create_user(username, password, department):
         db.refresh(user)
         return user
 
-def add_event_to_db(title, start_time, end_time, description, owner_id, color):
+def add_event_to_db(title, start_time, end_time, description, owner_id):
     with SessionLocal() as db:
         ev = Event(
             title=title,
@@ -92,8 +80,7 @@ def add_event_to_db(title, start_time, end_time, description, owner_id, color):
             end_time=end_time,
             description=description,
             owner_id=owner_id,
-            deleted=False,
-            color=color
+            deleted=False
         )
         db.add(ev)
         db.commit()
@@ -101,6 +88,7 @@ def add_event_to_db(title, start_time, end_time, description, owner_id, color):
         return ev
 
 def get_events_from_db(owner_id, target_date):
+    # 対象日のイベント（当日をまたぐものも含む）
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     with SessionLocal() as db:
@@ -113,6 +101,7 @@ def get_events_from_db(owner_id, target_date):
         return events
 
 def get_events_for_period(owner_id, start_date, end_date):
+    # 指定期間内に重なるイベント取得（カレンダー表示用）
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     with SessionLocal() as db:
@@ -187,28 +176,12 @@ def serialize_events_for_period(owner_id, start_date, end_date):
             "title": ev.title,
             "start": ev.start_time.isoformat(),
             "end": ev.end_time.isoformat(),
-            "description": ev.description,
-            "color": ev.color
+            "description": ev.description
         })
     return json.dumps(evs)
 
-# ---------------------------
-# 編集フォームの表示
-# ---------------------------
 def show_edit_event_form(event):
     st.sidebar.markdown("### 予定編集")
-    # 編集フォーム内で背景色の選択を追加
-    # 現在の色に一致する名前を探す
-    current_color_name = None
-    for name, code in colors.items():
-        if code == event.color:
-            current_color_name = name
-            break
-    if current_color_name is None:
-        current_color_name = list(colors.keys())[0]
-    new_color_name = st.selectbox("背景色", list(colors.keys()), index=list(colors.keys()).index(current_color_name))
-    new_color = colors[new_color_name]
-    
     with st.sidebar.form("edit_event_form"):
         new_title = st.text_input("予定（イベント）タイトル", value=event.title)
         new_start_date = st.date_input("開始日", value=event.start_time.date(), key="edit_start_date")
@@ -217,14 +190,14 @@ def show_edit_event_form(event):
         new_end_time = st.time_input("終了時刻", value=event.end_time.time())
         new_description = st.text_area("備考", value=event.description, height=100)
         if st.form_submit_button("更新"):
+            # 削除して新規追加（編集）
             delete_event_from_db(event.id, st.session_state.current_user.id)
             add_event_to_db(
                 new_title,
                 datetime.combine(new_start_date, new_start_time),
                 datetime.combine(new_end_date, new_end_time),
                 new_description,
-                st.session_state.current_user.id,
-                new_color
+                st.session_state.current_user.id
             )
             st.success("予定が更新されました。")
             st.session_state.edit_event_id = None
@@ -277,7 +250,7 @@ def main_page():
     
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # 編集フォームの表示（もし編集対象が選択されていれば）
+    # 編集フォームの表示（編集対象があれば）
     if st.session_state.edit_event_id is not None:
         event_to_edit = get_event_by_id(st.session_state.edit_event_id, st.session_state.current_user.id)
         if event_to_edit:
@@ -301,8 +274,6 @@ def main_page():
             event_start_time = datetime.strptime("00:00", "%H:%M").time()
             event_end_time = datetime.strptime("23:59", "%H:%M").time()
         event_description = st.text_area("備考", height=100)
-        selected_color_name = st.selectbox("背景色", list(colors.keys()))
-        selected_color = colors[selected_color_name]
         if st.form_submit_button("保存予定"):
             if not event_title:
                 st.error("予定のタイトルは必須です。")
@@ -312,8 +283,7 @@ def main_page():
                     datetime.combine(event_start_date, event_start_time),
                     datetime.combine(event_end_date, event_end_time),
                     event_description,
-                    st.session_state.current_user.id,
-                    selected_color
+                    st.session_state.current_user.id
                 )
                 st.success("予定が保存されました。")
                 st.experimental_rerun()
@@ -469,9 +439,6 @@ def main_page():
               titleEl.style.color = '#555555';
               titleEl.innerText = arg.event.title;
               var container = document.createElement('div');
-              // イベント背景色を適用
-              var bgColor = arg.event.extendedProps.color || "#FFFFFF";
-              container.style.backgroundColor = bgColor;
               if(new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()) {{
                 container.classList.add("fc-event-multiday");
               }}
