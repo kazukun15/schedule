@@ -54,6 +54,9 @@ Base.metadata.create_all(bind=engine)
 # ---------------------------
 st.session_state.setdefault("current_user", None)
 st.session_state.setdefault("page", "login")  # "login", "register", "main"
+# 編集対象のイベントIDをセッションに保存
+if "edit_event_id" not in st.session_state:
+    st.session_state.edit_event_id = None
 
 # ---------------------------
 # ヘルパー関数（DB操作）
@@ -99,7 +102,7 @@ def get_events_from_db(owner_id, target_date):
         return events
 
 def get_events_for_period(owner_id, start_date, end_date):
-    # 指定期間内に重なるイベント（カレンダー表示用）取得
+    # 指定期間内に重なるイベント（カレンダー用）取得
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     with SessionLocal() as db:
@@ -110,6 +113,10 @@ def get_events_for_period(owner_id, start_date, end_date):
             Event.end_time >= start_dt
         ).all()
         return events
+
+def get_event_by_id(event_id, owner_id):
+    with SessionLocal() as db:
+        return db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
 
 def delete_event_from_db(event_id, owner_id):
     with SessionLocal() as db:
@@ -187,10 +194,12 @@ def login_page():
             st.session_state.current_user = user
             st.session_state.page = "main"
             st.success("ログイン成功！")
+            st.experimental_rerun()
         else:
             st.error("ユーザー名またはパスワードが正しくありません。")
     if st.button("アカウント作成"):
         st.session_state.page = "register"
+        st.experimental_rerun()
 
 def register_page():
     st.title("アカウント作成")
@@ -204,12 +213,42 @@ def register_page():
             create_user(username, password, department)
             st.success("アカウント作成に成功しました。ログインしてください。")
             st.session_state.page = "login"
+            st.experimental_rerun()
     if st.button("ログインページへ"):
         st.session_state.page = "login"
+        st.experimental_rerun()
 
 def logout_ui():
     st.session_state.current_user = None
     st.session_state.page = "login"
+    st.experimental_rerun()
+
+# ---------------------------
+# 編集フォームの表示
+# ---------------------------
+def show_edit_event_form(event):
+    st.sidebar.markdown("### 予定編集")
+    with st.sidebar.form("edit_event_form"):
+        new_title = st.text_input("予定（イベント）タイトル", value=event.title)
+        new_start_date = st.date_input("開始日", value=event.start_time.date(), key="edit_start_date")
+        new_start_time = st.time_input("開始時刻", value=event.start_time.time())
+        new_end_date = st.date_input("終了日", value=event.end_time.date(), key="edit_end_date")
+        new_end_time = st.time_input("終了時刻", value=event.end_time.time())
+        new_description = st.text_area("備考", value=event.description, height=100)
+        if st.form_submit_button("更新"):
+            # 論理削除（旧イベントを完了扱い）
+            delete_event_from_db(event.id, st.session_state.current_user.id)
+            # 新規イベントとして追加
+            add_event_to_db(
+                new_title,
+                datetime.combine(new_start_date, new_start_time),
+                datetime.combine(new_end_date, new_end_time),
+                new_description,
+                st.session_state.current_user.id
+            )
+            st.success("予定が更新されました。")
+            st.session_state.edit_event_id = None
+            st.experimental_rerun()
 
 # ---------------------------
 # Streamlit UI: メインページ
@@ -220,10 +259,18 @@ def main_page():
     # 手動更新ボタン
     if st.button("更新"):
         st.experimental_rerun()
-    
+
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
-    # サイドバー: イベント入力フォーム
+    # サイドバー: 編集フォーム表示（もし編集対象が選択されていれば）
+    if st.session_state.edit_event_id is not None:
+        event_to_edit = get_event_by_id(st.session_state.edit_event_id, st.session_state.current_user.id)
+        if event_to_edit:
+            show_edit_event_form(event_to_edit)
+        else:
+            st.session_state.edit_event_id = None  # 存在しなければリセット
+    
+    # サイドバー: イベント入力フォーム（新規追加）
     st.sidebar.markdown("### 新規予定追加")
     with st.sidebar.form("event_form"):
         event_title = st.text_input("予定（イベント）タイトル")
@@ -253,15 +300,19 @@ def main_page():
                 st.success("予定が保存されました。")
                 st.experimental_rerun()
     
-    # サイドバー: 今日の予定一覧（完了ボタン付き）
+    # サイドバー: 今日の予定一覧（完了・編集ボタン付き）
     st.sidebar.markdown("### 本日の予定一覧")
     events_today = get_events_from_db(st.session_state.current_user.id, date.today())
     if events_today:
         for ev in events_today:
             st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
-            if st.sidebar.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
+            col1, col2 = st.sidebar.columns(2)
+            if col1.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
                 complete_event_in_db(ev.id, st.session_state.current_user.id)
                 st.success("予定を完了しました。")
+                st.experimental_rerun()
+            if col2.button("編集", key=f"edit_event_{ev.id}"):
+                st.session_state.edit_event_id = ev.id
                 st.experimental_rerun()
     else:
         st.sidebar.info("本日の予定はありません。")
@@ -297,7 +348,6 @@ def main_page():
     # メインエリア: カレンダー表示（表示する月を選択）
     st.markdown("### カレンダー表示")
     display_date = st.date_input("カレンダー表示日", value=date.today(), key="calendar_date")
-    # 表示月の初日と最終日を計算
     first_day_of_month = display_date.replace(day=1)
     if display_date.month == 12:
         first_day_next_month = display_date.replace(year=display_date.year+1, month=1, day=1)
@@ -369,7 +419,7 @@ def main_page():
               }}
             }},
             eventClick: function(info) {{
-              alert("削除(完了)はサイドバーの『本日の予定一覧』または『Todo 一覧』から実施してください。");
+              alert("編集・削除はサイドバーの『本日の予定一覧』または『Todo 一覧』から実施してください。");
             }},
             eventContent: function(arg) {{
               var startTime = FullCalendar.formatDate(arg.event.start, {{hour: '2-digit', minute: '2-digit'}});
