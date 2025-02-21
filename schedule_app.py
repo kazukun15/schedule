@@ -99,7 +99,7 @@ def get_events_from_db(owner_id, target_date):
         return events
 
 def get_events_for_period(owner_id, start_date, end_date):
-    # 指定期間内に重なるイベント（カレンダー用）取得
+    # 指定期間内に重なるイベント（カレンダー表示用）取得
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
     with SessionLocal() as db:
@@ -187,12 +187,10 @@ def login_page():
             st.session_state.current_user = user
             st.session_state.page = "main"
             st.success("ログイン成功！")
-            st.experimental_rerun()
         else:
             st.error("ユーザー名またはパスワードが正しくありません。")
     if st.button("アカウント作成"):
         st.session_state.page = "register"
-        st.experimental_rerun()
 
 def register_page():
     st.title("アカウント作成")
@@ -206,15 +204,12 @@ def register_page():
             create_user(username, password, department)
             st.success("アカウント作成に成功しました。ログインしてください。")
             st.session_state.page = "login"
-            st.experimental_rerun()
     if st.button("ログインページへ"):
         st.session_state.page = "login"
-        st.experimental_rerun()
 
 def logout_ui():
     st.session_state.current_user = None
     st.session_state.page = "login"
-    st.experimental_rerun()
 
 # ---------------------------
 # Streamlit UI: メインページ
@@ -225,7 +220,7 @@ def main_page():
     # 手動更新ボタン
     if st.button("更新"):
         st.experimental_rerun()
-
+    
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
     # サイドバー: イベント入力フォーム
