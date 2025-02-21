@@ -195,11 +195,28 @@ def login_page():
     password = st.text_input("パスワード", type="password")
     if st.button("ログイン"):
         user = get_user(username)
-        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')): # パスワードをハッシュ化して比較
-            st.session_state.current_user = user
-            st.session_state.page = "main"
-            st.success("ログイン成功！")
-            st.experimental_rerun()
+        if user: # user が None でないことを確認 (念のため)
+            hashed_password_db = user.password # DBから取得したハッシュ化パスワード
+            password_入力 = password.encode('utf-8') # 入力パスワードをバイト列に
+
+            # hashed_password_db が文字列型の場合のみエンコードを試みる (バイト列の場合はそのまま)
+            if isinstance(hashed_password_db, str):
+                hashed_password_db_bytes = hashed_password_db.encode('utf-8')
+            else:
+                hashed_password_db_bytes = hashed_password_db # バイト列のまま使用
+
+            try: # エンコードエラーを捕捉するため try-except を追加
+                if bcrypt.checkpw(password_入力, hashed_password_db_bytes):
+                    st.session_state.current_user = user
+                    st.session_state.page = "main"
+                    st.success("ログイン成功！")
+                    st.experimental_rerun()
+                else:
+                    st.error("ユーザー名またはパスワードが正しくありません。")
+            except ValueError as e: # bcrypt.checkpw で ValueError が発生した場合のエラーハンドリング
+                st.error(f"ログイン処理でエラーが発生しました: {e}") # より具体的なエラーメッセージを表示 (デバッグ用)
+                st.error("パスワードの検証に失敗しました。ユーザー名またはパスワードが正しくないか、システムエラーの可能性があります。") # ユーザー向けのエラーメッセージ
+                print(f"bcrypt.checkpw エラー詳細: {e}") # ログにもエラー詳細を記録
         else:
             st.error("ユーザー名またはパスワードが正しくありません。")
     if st.button("アカウント作成"):
