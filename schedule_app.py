@@ -5,8 +5,7 @@ import json
 import jpholiday
 from datetime import datetime, date, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, Boolean, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from streamlit_autorefresh import st_autorefresh
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -235,7 +234,7 @@ def main_page():
     st.title("海光園スケジュールシステム")
     
     if st.button("更新"):
-        st.experimental_rerun()
+        st.rerun()
     
     st.sidebar.button("ログアウト", on_click=logout_ui)
     
@@ -401,56 +400,56 @@ def main_page():
               if(info.date.getDay() === 6) {{
                 info.el.style.backgroundColor = "#ABE1FA";
               }}
-              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1)
-          {{
-        info.el.style.backgroundColor = "#F9C1CF";
-      }}
-    }},
-    dateClick: function(info) {{
-      var title = prompt("予定のタイトルを入力してください", "新規予定");
-      if (title) {{
-        var start = info.date;
-        var end = new Date(start.getTime() + 60*60*1000);
-        var newEvent = {{
-          id: Date.now(),
-          title: title,
-          start: start.toISOString(),
-          end: end.toISOString()
-        }};
-        calendar.addEvent(newEvent);
-        alert("新規追加した予定はDBに保存されません。サイドバーから追加してください。");
-      }}
-    }},
-    eventClick: function(info) {{
-      alert("編集・削除はサイドバーの『本日の予定一覧』または『指定日の予定一覧』から実施してください。");
-    }},
-    eventContent: function(arg) {{
-      var startTime = FullCalendar.formatDate(arg.event.start, {{hour: '2-digit', minute: '2-digit'}});
-      var endTime = FullCalendar.formatDate(arg.event.end, {{hour: '2-digit', minute: '2-digit'}});
-      var timeEl = document.createElement('div');
-      timeEl.style.fontSize = '0.7rem';
-      timeEl.style.color = '#555555';
-      timeEl.innerText = startTime + '～' + endTime;
-      var titleEl = document.createElement('div');
-      titleEl.style.fontSize = '0.8rem';
-      titleEl.style.color = '#555555';
-      titleEl.innerText = arg.event.title;
-      var container = document.createElement('div');
-      if (new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()) {{
-        container.classList.add("fc-event-multiday");
-      }}
-      container.appendChild(timeEl);
-      container.appendChild(titleEl);
-      return {{ domNodes: [ container ] }};
-    }}
-  }});
-  calendar.render();
-}});
-</script>
-</body>
-</html>
-"""
-components.html(html_calendar, height=700)
+              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {{
+                info.el.style.backgroundColor = "#F9C1CF";
+              }}
+            }},
+            dateClick: function(info) {{
+              var
+                  var title = prompt("予定のタイトルを入力してください", "新規予定");
+              if (title) {
+                var start = info.date;
+                var end = new Date(start.getTime() + 60*60*1000);
+                var newEvent = {
+                  id: Date.now(),
+                  title: title,
+                  start: start.toISOString(),
+                  end: end.toISOString()
+                };
+                calendar.addEvent(newEvent);
+                alert("新規追加した予定はDBに保存されません。サイドバーから追加してください。");
+              }
+            },
+            eventClick: function(info) {
+              alert("編集・削除はサイドバーの『本日の予定一覧』または『指定日の予定一覧』から実施してください。");
+            },
+            eventContent: function(arg) {
+              var startTime = FullCalendar.formatDate(arg.event.start, {hour: '2-digit', minute: '2-digit'});
+              var endTime = FullCalendar.formatDate(arg.event.end, {hour: '2-digit', minute: '2-digit'});
+              var timeEl = document.createElement('div');
+              timeEl.style.fontSize = '0.7rem';
+              timeEl.style.color = '#555555';
+              timeEl.innerText = startTime + '～' + endTime;
+              var titleEl = document.createElement('div');
+              titleEl.style.fontSize = '0.8rem';
+              titleEl.style.color = '#555555';
+              titleEl.innerText = arg.event.title;
+              var container = document.createElement('div');
+              if (new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()) {
+                container.classList.add("fc-event-multiday");
+              }
+              container.appendChild(timeEl);
+              container.appendChild(titleEl);
+              return { domNodes: [ container ] };
+            }
+          });
+          calendar.render();
+        });
+      </script>
+    </body>
+    </html>
+    """
+    components.html(html_calendar, height=700)
 
 if st.session_state.current_user is None:
     if st.session_state.page == "register":
