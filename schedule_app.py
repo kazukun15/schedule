@@ -278,7 +278,7 @@ def main_page():
                         st.session_state.current_user.id
                     )
                     st.success("予定が保存されました。")
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
     
     # サイドバー: 本日の予定一覧（完了・編集ボタン付き）
     st.sidebar.markdown("### 本日の予定一覧")
@@ -291,10 +291,10 @@ def main_page():
                 if col1.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
                     delete_event_from_db(db, ev.id, st.session_state.current_user.id)
                     st.success("予定を完了しました。")
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
                 if col2.button("編集", key=f"edit_event_{ev.id}"):
                     st.session_state.edit_event_id = ev.id
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
         else:
             st.sidebar.info("本日の予定はありません。")
     
@@ -310,10 +310,10 @@ def main_page():
                 if col1.button(f"削除 (ID:{ev.id})", key=f"del_event_{ev.id}"):
                     delete_event_from_db(db, ev.id, st.session_state.current_user.id)
                     st.success("予定を削除しました。")
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
                 if col2.button("編集", key=f"edit_event2_{ev.id}"):
                     st.session_state.edit_event_id = ev.id
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
         else:
             st.sidebar.info("指定日の予定はありません。")
     
@@ -325,7 +325,7 @@ def main_page():
             with SessionLocal() as db:
                 add_todo_to_db(db, todo_title, st.session_state.current_user.id)
                 st.success("Todo を追加しました。")
-                st.experimental_rerun()
+                st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
     
     st.sidebar.markdown("#### Todo 一覧")
     with SessionLocal() as db:
@@ -342,7 +342,7 @@ def main_page():
                     ).update({Event.deleted: True})
                     db.commit()
                     st.success("Todo を完了し、対応するイベントも削除(論理)しました。")
-                    st.experimental_rerun()
+                    st.experimental_set_query_params()  # ページのリロードを避けるためにこれを使用
         else:
             st.sidebar.info("Todo はありません。")
     
@@ -401,27 +401,61 @@ def main_page():
               if(info.date.getDay() === 6) {{
                 info.el.style.backgroundColor = "#ABE1FA";
               }}
-              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1) {{
-                info.el.style.backgroundColor = "#F9C1CF";
-              }}
-            }},
-            dateClick: function(info) {{
-              var title = prompt("予定のタイトルを入力してください", "新規予定");
-              if(title) {{
-                var start = info.date;
-                var end = new Date(start.getTime() + 60*60*1000);
-                var newEvent = {{
-                  id: Date.now(),
-                  title: title,
-                  start: start.toISOString(),
-                  end: end.toISOString()
-                }};
-                calendar.addEvent(newEvent);
-                alert("新規追加した予定はDBに保存されません。サイドバーから追加してください。");
-              }}
-            }},
-            eventClick: function(info) {{
-              alert("編集・削除はサイドバーの『本日の予定一覧』または『指定日の予定一覧』から実施してください。");
-            }},
-            eventContent: function(arg) {{
-              var startTime = FullCalendar.formatDate(arg.event.start, {{hour:
+              if(info.date.getDay() === 0 || holidays.indexOf(dStr) !== -1)
+          {{
+        info.el.style.backgroundColor = "#F9C1CF";
+      }}
+    }},
+    dateClick: function(info) {{
+      var title = prompt("予定のタイトルを入力してください", "新規予定");
+      if (title) {{
+        var start = info.date;
+        var end = new Date(start.getTime() + 60*60*1000);
+        var newEvent = {{
+          id: Date.now(),
+          title: title,
+          start: start.toISOString(),
+          end: end.toISOString()
+        }};
+        calendar.addEvent(newEvent);
+        alert("新規追加した予定はDBに保存されません。サイドバーから追加してください。");
+      }}
+    }},
+    eventClick: function(info) {{
+      alert("編集・削除はサイドバーの『本日の予定一覧』または『指定日の予定一覧』から実施してください。");
+    }},
+    eventContent: function(arg) {{
+      var startTime = FullCalendar.formatDate(arg.event.start, {{hour: '2-digit', minute: '2-digit'}});
+      var endTime = FullCalendar.formatDate(arg.event.end, {{hour: '2-digit', minute: '2-digit'}});
+      var timeEl = document.createElement('div');
+      timeEl.style.fontSize = '0.7rem';
+      timeEl.style.color = '#555555';
+      timeEl.innerText = startTime + '～' + endTime;
+      var titleEl = document.createElement('div');
+      titleEl.style.fontSize = '0.8rem';
+      titleEl.style.color = '#555555';
+      titleEl.innerText = arg.event.title;
+      var container = document.createElement('div');
+      if (new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()) {{
+        container.classList.add("fc-event-multiday");
+      }}
+      container.appendChild(timeEl);
+      container.appendChild(titleEl);
+      return {{ domNodes: [ container ] }};
+    }}
+  }});
+  calendar.render();
+}});
+</script>
+</body>
+</html>
+"""
+components.html(html_calendar, height=700)
+
+if st.session_state.current_user is None:
+    if st.session_state.page == "register":
+        register_page()
+    else:
+        login_page()
+else:
+    main_page()
