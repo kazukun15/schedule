@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Date, DateTime, B
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from streamlit_autorefresh import st_autorefresh
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # ---------------------------
 # 自動更新（10秒ごと）
@@ -26,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # ※実際はハッシュ化すべき
+    password = Column(String, nullable=False)
     department = Column(String)
 
 class Event(Base):
@@ -37,7 +38,7 @@ class Event(Base):
     end_time = Column(DateTime, nullable=False)
     description = Column(String)
     owner_id = Column(Integer, nullable=False)
-    deleted = Column(Boolean, default=False)  # 論理削除用フラグ
+    deleted = Column(Boolean, default=False)
 
 class Todo(Base):
     __tablename__ = "todos"
@@ -53,104 +54,90 @@ Base.metadata.create_all(bind=engine)
 # Streamlit セッション初期化
 # ---------------------------
 st.session_state.setdefault("current_user", None)
-st.session_state.setdefault("page", "login")  # "login", "register", "main"
+st.session_state.setdefault("page", "login")
 if "edit_event_id" not in st.session_state:
     st.session_state.edit_event_id = None
 
 # ---------------------------
 # ヘルパー関数（DB操作）
 # ---------------------------
-def get_user(username):
-    with SessionLocal() as db:
-        return db.query(User).filter(User.username == username).first()
+def get_user(db, username):
+    return db.query(User).filter(User.username == username).first()
 
-def create_user(username, password, department):
-    with SessionLocal() as db:
-        user = User(username=username, password=password, department=department)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return user
+def create_user(db, username, password, department):
+    hashed_password = generate_password_hash(password)
+    user = User(username=username, password=hashed_password, department=department)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
-def add_event_to_db(title, start_time, end_time, description, owner_id):
-    with SessionLocal() as db:
-        ev = Event(
-            title=title,
-            start_time=start_time,
-            end_time=end_time,
-            description=description,
-            owner_id=owner_id,
-            deleted=False
-        )
-        db.add(ev)
-        db.commit()
-        db.refresh(ev)
-        return ev
+def add_event_to_db(db, title, start_time, end_time, description, owner_id):
+    ev = Event(
+        title=title,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        owner_id=owner_id,
+        deleted=False
+    )
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return ev
 
-def get_events_from_db(owner_id, target_date):
-    # 対象日のイベント（当日をまたぐものも含む）
+def get_events_from_db(db, owner_id, target_date):
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
-    with SessionLocal() as db:
-        events = db.query(Event).filter(
-            Event.owner_id == owner_id,
-            Event.deleted == False,
-            Event.start_time <= end_of_day,
-            Event.end_time >= start_of_day
-        ).all()
-        return events
+    return db.query(Event).filter(
+        Event.owner_id == owner_id,
+        Event.deleted == False,
+        Event.start_time <= end_of_day,
+        Event.end_time >= start_of_day
+    ).all()
 
-def get_events_for_period(owner_id, start_date, end_date):
-    # 指定期間内に重なるイベント取得（カレンダー表示用）
+def get_events_for_period(db, owner_id, start_date, end_date):
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
-    with SessionLocal() as db:
-        events = db.query(Event).filter(
-            Event.owner_id == owner_id,
-            Event.deleted == False,
-            Event.start_time <= end_dt,
-            Event.end_time >= start_dt
-        ).all()
-        return events
+    return db.query(Event).filter(
+        Event.owner_id == owner_id,
+        Event.deleted == False,
+        Event.start_time <= end_dt,
+        Event.end_time >= start_dt
+    ).all()
 
-def get_event_by_id(event_id, owner_id):
-    with SessionLocal() as db:
-        return db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
+def get_event_by_id(db, event_id, owner_id):
+    return db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
 
-def delete_event_from_db(event_id, owner_id):
-    with SessionLocal() as db:
-        ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
-        if ev:
-            ev.deleted = True
-            db.commit()
-            return True
-        return False
-
-def add_todo_to_db(title, owner_id):
-    with SessionLocal() as db:
-        t = Todo(title=title, date=date.today(), completed=False, owner_id=owner_id)
-        db.add(t)
+def delete_event_from_db(db, event_id, owner_id):
+    ev = db.query(Event).filter(Event.id == event_id, Event.owner_id == owner_id).first()
+    if ev:
+        ev.deleted = True
         db.commit()
-        db.refresh(t)
-        return t
+        return True
+    return False
 
-def get_todos_from_db(owner_id, target_date):
-    with SessionLocal() as db:
-        todos = db.query(Todo).filter(
-            Todo.owner_id == owner_id,
-            Todo.date == target_date,
-            Todo.completed == False
-        ).all()
-        return todos
+def add_todo_to_db(db, title, owner_id):
+    t = Todo(title=title, date=date.today(), completed=False, owner_id=owner_id)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
 
-def complete_todo_in_db(todo_id, owner_id):
-    with SessionLocal() as db:
-        todo = db.query(Todo).filter(Todo.id == todo_id, Todo.owner_id == owner_id).first()
-        if todo:
-            todo.completed = True
-            db.commit()
-            return True
-        return False
+def get_todos_from_db(db, owner_id, target_date):
+    return db.query(Todo).filter(
+        Todo.owner_id == owner_id,
+        Todo.date == target_date,
+        Todo.completed == False
+    ).all()
+
+def complete_todo_in_db(db, todo_id, owner_id):
+    todo = db.query(Todo).filter(Todo.id == todo_id, Todo.owner_id == owner_id).first()
+    if todo:
+        todo.completed = True
+        db.commit()
+        return True
+    return False
 
 def get_holidays_for_month(target_date):
     first_day = target_date.replace(day=1)
@@ -167,8 +154,8 @@ def get_holidays_for_month(target_date):
         d += timedelta(days=1)
     return holidays
 
-def serialize_events_for_period(owner_id, start_date, end_date):
-    events = get_events_for_period(owner_id, start_date, end_date)
+def serialize_events_for_period(db, owner_id, start_date, end_date):
+    events = get_events_for_period(db, owner_id, start_date, end_date)
     evs = []
     for ev in events:
         evs.append({
@@ -180,7 +167,7 @@ def serialize_events_for_period(owner_id, start_date, end_date):
         })
     return json.dumps(evs)
 
-def show_edit_event_form(event):
+def show_edit_event_form(db, event):
     st.sidebar.markdown("### 予定編集")
     with st.sidebar.form("edit_event_form"):
         new_title = st.text_input("予定（イベント）タイトル", value=event.title)
@@ -190,9 +177,9 @@ def show_edit_event_form(event):
         new_end_time = st.time_input("終了時刻", value=event.end_time.time())
         new_description = st.text_area("備考", value=event.description, height=100)
         if st.form_submit_button("更新"):
-            # 削除して新規追加（編集）
-            delete_event_from_db(event.id, st.session_state.current_user.id)
+            delete_event_from_db(db, event.id, st.session_state.current_user.id)
             add_event_to_db(
+                db,
                 new_title,
                 datetime.combine(new_start_date, new_start_time),
                 datetime.combine(new_end_date, new_end_time),
@@ -210,13 +197,14 @@ def login_page():
     username = st.text_input("ユーザー名")
     password = st.text_input("パスワード", type="password")
     if st.button("ログイン"):
-        user = get_user(username)
-        if user and user.password == password:
-            st.session_state.current_user = user
-            st.session_state.page = "main"
-            st.success("ログイン成功！")
-        else:
-            st.error("ユーザー名またはパスワードが正しくありません。")
+        with SessionLocal() as db:
+            user = get_user(db, username)
+            if user and check_password_hash(user.password, password):
+                st.session_state.current_user = user
+                st.session_state.page = "main"
+                st.success("ログイン成功！")
+            else:
+                st.error("ユーザー名またはパスワードが正しくありません。")
     if st.button("アカウント作成"):
         st.session_state.page = "register"
 
@@ -226,12 +214,13 @@ def register_page():
     password = st.text_input("パスワード", type="password", key="reg_password")
     department = st.text_input("部署", key="reg_department")
     if st.button("登録"):
-        if get_user(username):
-            st.error("このユーザー名は既に存在します。")
-        else:
-            create_user(username, password, department)
-            st.success("アカウント作成に成功しました。ログインしてください。")
-            st.session_state.page = "login"
+        with SessionLocal() as db:
+            if get_user(db, username):
+                st.error("このユーザー名は既に存在します。")
+            else:
+                create_user(db, username, password, department)
+                st.success("アカウント作成に成功しました。ログインしてください。")
+                st.session_state.page = "login"
     if st.button("ログインページへ"):
         st.session_state.page = "login"
 
@@ -252,11 +241,12 @@ def main_page():
     
     # 編集フォームの表示（編集対象があれば）
     if st.session_state.edit_event_id is not None:
-        event_to_edit = get_event_by_id(st.session_state.edit_event_id, st.session_state.current_user.id)
-        if event_to_edit:
-            show_edit_event_form(event_to_edit)
-        else:
-            st.session_state.edit_event_id = None
+        with SessionLocal() as db:
+            event_to_edit = get_event_by_id(db, st.session_state.edit_event_id, st.session_state.current_user.id)
+            if event_to_edit:
+                show_edit_event_form(db, event_to_edit)
+            else:
+                st.session_state.edit_event_id = None
     
     # サイドバー: 新規予定追加
     st.sidebar.markdown("### 新規予定追加")
@@ -278,78 +268,83 @@ def main_page():
             if not event_title:
                 st.error("予定のタイトルは必須です。")
             else:
-                add_event_to_db(
-                    event_title,
-                    datetime.combine(event_start_date, event_start_time),
-                    datetime.combine(event_end_date, event_end_time),
-                    event_description,
-                    st.session_state.current_user.id
-                )
-                st.success("予定が保存されました。")
-                st.experimental_rerun()
+                with SessionLocal() as db:
+                    add_event_to_db(
+                        db,
+                        event_title,
+                        datetime.combine(event_start_date, event_start_time),
+                        datetime.combine(event_end_date, event_end_time),
+                        event_description,
+                        st.session_state.current_user.id
+                    )
+                    st.success("予定が保存されました。")
+                    st.experimental_rerun()
     
     # サイドバー: 本日の予定一覧（完了・編集ボタン付き）
     st.sidebar.markdown("### 本日の予定一覧")
-    events_today = get_events_from_db(st.session_state.current_user.id, date.today())
-    if events_today:
-        for ev in events_today:
-            st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
-            col1, col2 = st.sidebar.columns(2)
-            if col1.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
-                delete_event_from_db(ev.id, st.session_state.current_user.id)
-                st.success("予定を完了しました。")
-                st.experimental_rerun()
-            if col2.button("編集", key=f"edit_event_{ev.id}"):
-                st.session_state.edit_event_id = ev.id
-                st.experimental_rerun()
-    else:
-        st.sidebar.info("本日の予定はありません。")
+    with SessionLocal() as db:
+        events_today = get_events_from_db(db, st.session_state.current_user.id, date.today())
+        if events_today:
+            for ev in events_today:
+                st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
+                col1, col2 = st.sidebar.columns(2)
+                if col1.button(f"完了 (ID:{ev.id})", key=f"complete_event_{ev.id}"):
+                    delete_event_from_db(db, ev.id, st.session_state.current_user.id)
+                    st.success("予定を完了しました。")
+                    st.experimental_rerun()
+                if col2.button("編集", key=f"edit_event_{ev.id}"):
+                    st.session_state.edit_event_id = ev.id
+                    st.experimental_rerun()
+        else:
+            st.sidebar.info("本日の予定はありません。")
     
     # サイドバー: 指定日の予定一覧（編集・削除）
     st.sidebar.markdown("### 指定日の予定一覧")
     selected_date = st.sidebar.date_input("編集・削除する日", value=date.today(), key="edit_date")
-    events_selected = get_events_from_db(st.session_state.current_user.id, selected_date)
-    if events_selected:
-        for ev in events_selected:
-            st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
-            col1, col2 = st.sidebar.columns(2)
-            if col1.button(f"削除 (ID:{ev.id})", key=f"del_event_{ev.id}"):
-                delete_event_from_db(ev.id, st.session_state.current_user.id)
-                st.success("予定を削除しました。")
-                st.experimental_rerun()
-            if col2.button("編集", key=f"edit_event2_{ev.id}"):
-                st.session_state.edit_event_id = ev.id
-                st.experimental_rerun()
-    else:
-        st.sidebar.info("指定日の予定はありません。")
+    with SessionLocal() as db:
+        events_selected = get_events_from_db(db, st.session_state.current_user.id, selected_date)
+        if events_selected:
+            for ev in events_selected:
+                st.sidebar.write(f"{ev.title} ({ev.start_time.strftime('%H:%M')}～{ev.end_time.strftime('%H:%M')})")
+                col1, col2 = st.sidebar.columns(2)
+                if col1.button(f"削除 (ID:{ev.id})", key=f"del_event_{ev.id}"):
+                    delete_event_from_db(db, ev.id, st.session_state.current_user.id)
+                    st.success("予定を削除しました。")
+                    st.experimental_rerun()
+                if col2.button("編集", key=f"edit_event2_{ev.id}"):
+                    st.session_state.edit_event_id = ev.id
+                    st.experimental_rerun()
+        else:
+            st.sidebar.info("指定日の予定はありません。")
     
     # サイドバー: Todo 管理
     st.sidebar.markdown("### 本日の Todo")
     with st.sidebar.form("todo_form"):
         todo_title = st.text_input("Todo のタイトル")
         if st.form_submit_button("Todo 追加") and todo_title:
-            add_todo_to_db(todo_title, st.session_state.current_user.id)
-            st.success("Todo を追加しました。")
-            st.experimental_rerun()
+            with SessionLocal() as db:
+                add_todo_to_db(db, todo_title, st.session_state.current_user.id)
+                st.success("Todo を追加しました。")
+                st.experimental_rerun()
     
     st.sidebar.markdown("#### Todo 一覧")
-    todos = get_todos_from_db(st.session_state.current_user.id, date.today())
-    if todos:
-        for i, todo in enumerate(todos):
-            st.sidebar.write(f"- {todo.title}")
-            if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
-                complete_todo_in_db(todo.id, st.session_state.current_user.id)
-                with SessionLocal() as db:
+    with SessionLocal() as db:
+        todos = get_todos_from_db(db, st.session_state.current_user.id, date.today())
+        if todos:
+            for i, todo in enumerate(todos):
+                st.sidebar.write(f"- {todo.title}")
+                if st.sidebar.button(f"完了 {i}", key=f"complete_{i}"):
+                    complete_todo_in_db(db, todo.id, st.session_state.current_user.id)
                     db.query(Event).filter(
                         Event.owner_id == st.session_state.current_user.id,
                         func.date(Event.start_time) == date.today(),
                         Event.title == todo.title
                     ).update({Event.deleted: True})
                     db.commit()
-                st.success("Todo を完了し、対応するイベントも削除(論理)しました。")
-                st.experimental_rerun()
-    else:
-        st.sidebar.info("Todo はありません。")
+                    st.success("Todo を完了し、対応するイベントも削除(論理)しました。")
+                    st.experimental_rerun()
+        else:
+            st.sidebar.info("Todo はありません。")
     
     # メインエリア: カレンダー表示（表示する月を選択）
     st.markdown("### カレンダー表示")
@@ -360,8 +355,9 @@ def main_page():
     else:
         first_day_next_month = display_date.replace(month=display_date.month+1, day=1)
     last_day_of_month = first_day_next_month - timedelta(days=1)
-    events_json = serialize_events_for_period(st.session_state.current_user.id, first_day_of_month, last_day_of_month)
-    holidays = get_holidays_for_month(first_day_of_month)
+    with SessionLocal() as db:
+        events_json = serialize_events_for_period(db, st.session_state.current_user.id, first_day_of_month, last_day_of_month)
+        holidays = get_holidays_for_month(first_day_of_month)
     
     html_calendar = f"""
     <!DOCTYPE html>
@@ -428,38 +424,4 @@ def main_page():
               alert("編集・削除はサイドバーの『本日の予定一覧』または『指定日の予定一覧』から実施してください。");
             }},
             eventContent: function(arg) {{
-              var startTime = FullCalendar.formatDate(arg.event.start, {{hour: '2-digit', minute: '2-digit'}});
-              var endTime = FullCalendar.formatDate(arg.event.end, {{hour: '2-digit', minute: '2-digit'}});
-              var timeEl = document.createElement('div');
-              timeEl.style.fontSize = '0.7rem';
-              timeEl.style.color = '#555555';
-              timeEl.innerText = startTime + '～' + endTime;
-              var titleEl = document.createElement('div');
-              titleEl.style.fontSize = '0.8rem';
-              titleEl.style.color = '#555555';
-              titleEl.innerText = arg.event.title;
-              var container = document.createElement('div');
-              if(new Date(arg.event.start).toDateString() !== new Date(arg.event.end).toDateString()) {{
-                container.classList.add("fc-event-multiday");
-              }}
-              container.appendChild(timeEl);
-              container.appendChild(titleEl);
-              return {{ domNodes: [ container ] }};
-            }}
-          }});
-          calendar.render();
-        }});
-      </script>
-    </body>
-    </html>
-    """
-    
-    components.html(html_calendar, height=700)
-
-if st.session_state.current_user is None:
-    if st.session_state.page == "register":
-        register_page()
-    else:
-        login_page()
-else:
-    main_page()
+              var startTime = FullCalendar.formatDate(arg.event.start, {{hour:
